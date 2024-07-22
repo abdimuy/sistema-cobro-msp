@@ -1,118 +1,254 @@
-/**
- * Sample React Native App
- * https://github.com/facebook/react-native
- *
- * @format
- */
+import React, {useEffect} from 'react';
+import 'react-native-gesture-handler';
+import {NavigationContainer} from '@react-navigation/native';
 
-import React from 'react';
-import type {PropsWithChildren} from 'react';
-import {
-  SafeAreaView,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  useColorScheme,
-  View,
-} from 'react-native';
+import {createDrawerNavigator} from '@react-navigation/drawer';
+import Home from './src/screens/home/Home';
+import DailyReport from './src/components/modules/reports/DailyReport/DailyReport';
+import WeeklyReport from './src/components/modules/reports/WeeklyReport/WeeklyReport';
+import LoginScreen from './src/screens/auth/login';
+import {Spinner, View} from '@gluestack-ui/themed';
+import {User as UserFB} from 'firebase/auth';
+import {auth} from './src/firebase/connection';
+import {User} from './src/screens/auth/getUser';
+import useGetUser from './src/screens/auth/useGetUser';
+import SalesNavigator from './src/routes/SalesRoutes';
+import {Sale} from './src/screens/sales/Sales/sales.types';
+import useSales from './src/screens/sales/Sales/useSales';
+import {Timestamp, firebase} from '@react-native-firebase/firestore';
 
-import {
-  Colors,
-  DebugInstructions,
-  Header,
-  LearnMoreLinks,
-  ReloadInstructions,
-} from 'react-native/Libraries/NewAppScreen';
+export type RootDrawerParamList = {
+  Home: undefined;
+  Sales: undefined;
+  dailyReport: undefined;
+  weeklyReport: undefined;
+  Login: undefined;
+};
 
-type SectionProps = PropsWithChildren<{
-  title: string;
-}>;
+const Drawer = createDrawerNavigator<RootDrawerParamList>();
 
-function Section({children, title}: SectionProps): React.JSX.Element {
-  const isDarkMode = useColorScheme() === 'dark';
-  return (
-    <View style={styles.sectionContainer}>
-      <Text
-        style={[
-          styles.sectionTitle,
-          {
-            color: isDarkMode ? Colors.white : Colors.black,
-          },
-        ]}>
-        {title}
-      </Text>
-      <Text
-        style={[
-          styles.sectionDescription,
-          {
-            color: isDarkMode ? Colors.light : Colors.dark,
-          },
-        ]}>
-        {children}
-      </Text>
-    </View>
-  );
-}
-
-function App(): React.JSX.Element {
-  const isDarkMode = useColorScheme() === 'dark';
-
-  const backgroundStyle = {
-    backgroundColor: isDarkMode ? Colors.darker : Colors.lighter,
+export const AuthContext = React.createContext<{
+  user: UserFB | null;
+  setUser: React.Dispatch<React.SetStateAction<any>>;
+  userData: User;
+  setUserData: React.Dispatch<React.SetStateAction<User>>;
+  sales: Sale[];
+  salesLoading: boolean;
+  salesByDay: {
+    domingo: Sale[];
+    lunes: Sale[];
+    martes: Sale[];
+    miercoles: Sale[];
+    jueves: Sale[];
+    viernes: Sale[];
+    sabado: Sale[];
   };
-
-  return (
-    <SafeAreaView style={backgroundStyle}>
-      <StatusBar
-        barStyle={isDarkMode ? 'light-content' : 'dark-content'}
-        backgroundColor={backgroundStyle.backgroundColor}
-      />
-      <ScrollView
-        contentInsetAdjustmentBehavior="automatic"
-        style={backgroundStyle}>
-        <Header />
-        <View
-          style={{
-            backgroundColor: isDarkMode ? Colors.black : Colors.white,
-          }}>
-          <Section title="Step One">
-            Edit <Text style={styles.highlight}>App.tsx</Text> to change this
-            screen and then come back to see your edits.
-          </Section>
-          <Section title="See Your Changes">
-            <ReloadInstructions />
-          </Section>
-          <Section title="Debug">
-            <DebugInstructions />
-          </Section>
-          <Section title="Learn More">
-            Read the docs to discover what to do next:
-          </Section>
-          <LearnMoreLinks />
-        </View>
-      </ScrollView>
-    </SafeAreaView>
-  );
-}
-
-const styles = StyleSheet.create({
-  sectionContainer: {
-    marginTop: 32,
-    paddingHorizontal: 24,
+}>({
+  user: null,
+  setUser: () => {},
+  userData: {
+    COBRADOR_ID: 0,
+    CREATED_AT: Timestamp.now(),
+    EMAIL: '',
+    NOMBRE: '',
+    TELEFONO: '',
+    FECHA_CARGA_INICIAL: Timestamp.now(),
+    ID: '',
+    ZONA_CLIENTE_ID: 0,
   },
-  sectionTitle: {
-    fontSize: 24,
-    fontWeight: '600',
+  setUserData: () => {
+    return;
   },
-  sectionDescription: {
-    marginTop: 8,
-    fontSize: 18,
-    fontWeight: '400',
-  },
-  highlight: {
-    fontWeight: '700',
+  sales: [],
+  salesLoading: true,
+  salesByDay: {
+    domingo: [],
+    lunes: [],
+    martes: [],
+    miercoles: [],
+    jueves: [],
+    viernes: [],
+    sabado: [],
   },
 });
+
+export interface SaleByDay {
+  domingo: Sale[];
+  lunes: Sale[];
+  martes: Sale[];
+  miercoles: Sale[];
+  jueves: Sale[];
+  viernes: Sale[];
+  sabado: Sale[];
+}
+
+const AuthProvider = ({children}: {children: React.ReactNode}) => {
+  const [user, setUser] = React.useState<UserFB | null>(null);
+  const [userData, setUserData] = React.useState<User>({
+    COBRADOR_ID: 0,
+    CREATED_AT: Timestamp.now(),
+    EMAIL: '',
+    NOMBRE: '',
+    TELEFONO: '',
+    FECHA_CARGA_INICIAL: Timestamp.now(),
+    ID: '',
+    ZONA_CLIENTE_ID: 0,
+  });
+  const {sales, loading} = useSales(userData.ZONA_CLIENTE_ID);
+  const [salesByDay, setSalesByDay] = React.useState<SaleByDay>({
+    domingo: [],
+    lunes: [],
+    martes: [],
+    miercoles: [],
+    jueves: [],
+    viernes: [],
+    sabado: [],
+  });
+
+  useEffect(() => {
+    if (loading) {
+      return;
+    }
+    const salesByDay = sales.reduce(
+      (acc: SaleByDay, sale: Sale) => {
+        const day = new Date(sale.FECHA.toDate()).getDay();
+        switch (day) {
+          case 0:
+            return {...acc, domingo: [...acc.domingo, sale]};
+          case 1:
+            return {...acc, lunes: [...acc.lunes, sale]};
+          case 2:
+            return {...acc, martes: [...acc.martes, sale]};
+          case 3:
+            return {...acc, miercoles: [...acc.miercoles, sale]};
+          case 4:
+            return {...acc, jueves: [...acc.jueves, sale]};
+          case 5:
+            return {...acc, viernes: [...acc.viernes, sale]};
+          case 6:
+            return {...acc, sabado: [...acc.sabado, sale]};
+          default:
+            return acc;
+        }
+      },
+      {
+        domingo: [],
+        lunes: [],
+        martes: [],
+        miercoles: [],
+        jueves: [],
+        viernes: [],
+        sabado: [],
+      },
+    );
+    setSalesByDay(salesByDay);
+  }, [sales, loading]);
+
+  return (
+    <AuthContext.Provider
+      value={{
+        user,
+        setUser,
+        userData,
+        setUserData,
+        sales,
+        salesLoading: loading,
+        salesByDay,
+      }}>
+      {children}
+    </AuthContext.Provider>
+  );
+};
+
+function RootNav() {
+  const {user, setUser, setUserData} = React.useContext(AuthContext);
+  const [loading, setLoading] = React.useState(true);
+
+  useEffect(() => {
+    const unsubscribe = auth().onAuthStateChanged(authUser => {
+      if (authUser) {
+        setUser(authUser);
+      } else {
+        setUser(null);
+      }
+      setLoading(false);
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [user]);
+
+  const {user: userData, loading: loadingUserData} = useGetUser(
+    user?.email as string,
+    user,
+  );
+
+  useEffect(() => {
+    if (loadingUserData) {
+      return;
+    }
+    setUserData(userData as User);
+  }, [userData, loadingUserData]);
+
+  if (loading) {
+    return (
+      <View style={{flex: 1, justifyContent: 'center'}}>
+        <Spinner size="large" />
+      </View>
+    );
+  }
+
+  return (
+    <NavigationContainer>
+      {user ? (
+        <Drawer.Navigator
+          screenOptions={{
+            drawerType: 'slide',
+            headerShown: false,
+          }}>
+          <Drawer.Screen
+            name="Home"
+            component={Home}
+            options={{
+              drawerLabel: 'Inicio',
+            }}
+          />
+          <Drawer.Screen
+            name="Sales"
+            component={SalesNavigator}
+            options={{
+              drawerLabel: 'Clientes',
+            }}
+          />
+          <Drawer.Screen
+            name="dailyReport"
+            component={DailyReport}
+            options={{
+              drawerLabel: 'Reporte Diario',
+            }}
+          />
+          <Drawer.Screen
+            name="weeklyReport"
+            component={WeeklyReport}
+            options={{
+              drawerLabel: 'Reporte Semanal',
+            }}
+          />
+        </Drawer.Navigator>
+      ) : (
+        <LoginScreen />
+      )}
+    </NavigationContainer>
+  );
+}
+
+const App = () => {
+  return (
+    <AuthProvider>
+      <RootNav />
+    </AuthProvider>
+  );
+};
 
 export default App;
