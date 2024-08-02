@@ -1,11 +1,7 @@
 import {View, Text, TouchableOpacity} from 'react-native';
 import React, {useMemo} from 'react';
 import saleItemStyles from './saleItem.styles';
-import {
-  PRIMARY_COLOR,
-  TEXT_COLOR_PRIMARY,
-  TEXT_COLOR_SECONDARY,
-} from '../../../../contants/colors';
+import {PRIMARY_COLOR, TEXT_COLOR_SECONDARY} from '../../../../contants/colors';
 import ProgressBar from '../../../common/ProgressBar/ProgressBar';
 import {CheckIcon, Icon, RemoveIcon, CloseIcon} from '@gluestack-ui/themed';
 import {Sale} from '../../../../screens/sales/Sales/sales.types';
@@ -131,7 +127,7 @@ const SaleItem = ({
             Abonado
           </Text>
           <Text style={saleItemStyles.prograssCant}>
-            Resta <Text style={saleItemStyles.number}>${sale.SALDO_REST}</Text>
+            Saldo <Text style={saleItemStyles.number}>${sale.SALDO_REST}</Text>
           </Text>
         </View>
       </View>

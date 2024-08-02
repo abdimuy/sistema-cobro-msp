@@ -148,6 +148,7 @@ const SaleDetails = () => {
 
         const data: PaymentDto = {
           CLIENTE_ID: sale.CLIENTE_ID,
+          NOMBRE_CLIENTE: sale.CLIENTE,
           FECHA_HORA_PAGO: Timestamp.fromDate(dayjs().toDate()),
           COBRADOR: sale.NOMBRE_COBRADOR,
           COBRADOR_ID: userData.COBRADOR_ID,
@@ -158,6 +159,7 @@ const SaleDetails = () => {
           DOCTO_CC_ACR_ID: sale.DOCTO_CC_ACR_ID,
           FORMA_COBRO_ID: selectedFormaCobro,
           ZONA_CLIENTE_ID: sale.ZONA_CLIENTE_ID,
+          GUARDADO_EN_MICROSIP: false,
         };
         try {
           const batch = writeBatch(db);
@@ -228,6 +230,8 @@ const SaleDetails = () => {
           DOCTO_CC_ID: sale.DOCTO_CC_ID,
           DOCTO_CC_ACR_ID: sale.DOCTO_CC_ACR_ID,
           FORMA_COBRO_ID: CONDONACION_ID,
+          ZONA_CLIENTE_ID: sale.ZONA_CLIENTE_ID,
+          GUARDADO_EN_MICROSIP: false,
         };
         try {
           const batch = writeBatch(db);
@@ -286,7 +290,7 @@ const SaleDetails = () => {
     if (text === '') return setPayment(0);
     if (parseInt(text) < 0) return setPayment(0);
     if (parseInt(text) > sale.SALDO_REST) return setPayment(sale.SALDO_REST);
-    if (parseInt(text) > 0 && parseInt(text) <= sale.PARCIALIDAD) {
+    if (parseInt(text) > 0 && parseInt(text) < sale.PARCIALIDAD) {
       setAlertPayment('EL PAGO ES MENOR A LA PARCIALIDAD ACORDADA');
     } else {
       setAlertPayment('');
@@ -750,6 +754,7 @@ const SaleDetails = () => {
 
 export interface Payment {
   CLIENTE_ID: number;
+  NOMBRE_CLIENTE: string;
   COBRADOR: string;
   COBRADOR_ID: number;
   DOCTO_CC_ID: number;
@@ -761,6 +766,7 @@ export interface Payment {
   IMPORTE: number;
   LAT: number;
   LNG: number;
+  GUARDADO_EN_MICROSIP: boolean;
 }
 
 export type PaymentDto = Omit<Payment, 'ID'>;

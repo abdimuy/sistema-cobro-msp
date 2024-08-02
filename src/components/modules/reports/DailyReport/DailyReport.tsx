@@ -1,5 +1,5 @@
 import {View, Text, StyleSheet, Pressable, ScrollView} from 'react-native';
-import React, {useEffect} from 'react';
+import React, {useContext, useEffect, useState} from 'react';
 import {
   Timestamp,
   collection,
@@ -16,14 +16,17 @@ import usePrinter from '../../../../hooks/usePrinter';
 import {Picker} from '@react-native-picker/picker';
 import useSales from '../../../../screens/sales/Sales/useSales';
 import {NEGRITAS_OFF, NEGRITAS_ON} from '../../../../contants/printerCommans';
+import DateTimePicker from '@react-native-community/datetimepicker';
 
 const DailyReport = () => {
-  const {userData} = React.useContext(AuthContext);
-  const [pagos, setPagos] = React.useState<Payment[]>([]);
-  const [pagosConCliente, setPagosConCliente] = React.useState<
-    PaymentWithCliente[]
-  >([]);
+  const {userData} = useContext(AuthContext);
+  const [pagos, setPagos] = useState<Payment[]>([]);
+  const [pagosConCliente, setPagosConCliente] = useState<PaymentWithCliente[]>(
+    [],
+  );
   const {sales} = useSales(userData.ZONA_CLIENTE_ID);
+  const [date, setDate] = useState<Date>(dayjs().toDate());
+  const [showDatePicker, setShowDatePicker] = useState<boolean>(false);
 
   const {
     connectPrinter,
@@ -37,16 +40,17 @@ const DailyReport = () => {
 
   useEffect(() => {
     getListDevices();
-    const date = dayjs(userData.FECHA_CARGA_INICIAL.toDate()).isAfter(
-      dayjs().startOf('day'),
-    )
-      ? Timestamp.fromDate(userData.FECHA_CARGA_INICIAL.toDate())
-      : Timestamp.fromDate(dayjs().startOf('day').toDate());
+    const dateQ = dayjs(date).startOf('day');
 
     const q = query(
       collection(db, PAGOS_COLLECTION),
       where('ZONA_CLIENTE_ID', '==', userData.ZONA_CLIENTE_ID),
-      where('FECHA_HORA_PAGO', '>=', date),
+      where('FECHA_HORA_PAGO', '>=', Timestamp.fromDate(dateQ.toDate())),
+      where(
+        'FECHA_HORA_PAGO',
+        '<=',
+        Timestamp.fromDate(dayjs(date).endOf('day').toDate()),
+      ),
     );
     const unsubscribe = onSnapshot(q, snapshot => {
       setPagos(
@@ -57,7 +61,7 @@ const DailyReport = () => {
     return () => {
       unsubscribe();
     };
-  }, []);
+  }, [date]);
 
   useEffect(() => {
     const pagosConCliente = pagos.map(pago => {
@@ -93,6 +97,30 @@ Total de pagos: ${pagos.length}
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Reporte Diario</Text>
+      <Pressable
+        style={[
+          styles.button,
+          {
+            marginBottom: 20,
+          },
+        ]}
+        onPress={() => {
+          setShowDatePicker(true);
+        }}>
+        <Text style={[styles.buttonText]}>
+          {dayjs(date).format('DD/MM/YYYY')}
+        </Text>
+      </Pressable>
+      {showDatePicker && (
+        <DateTimePicker
+          value={date}
+          mode="date"
+          onChange={(event, selectedDate) => {
+            setShowDatePicker(false);
+            setDate(selectedDate || new Date());
+          }}
+        />
+      )}
       <ScrollView style={styles.list}>
         {pagosConCliente.map(pago => (
           <View key={pago.ID} style={styles.item}>
@@ -159,7 +187,7 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: 'black',
     marginTop: 20,
-    marginBottom: 20,
+    marginBottom: 5,
   },
   total: {
     fontSize: 24,
