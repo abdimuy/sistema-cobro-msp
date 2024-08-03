@@ -8430,7 +8430,7 @@ react-is@^16.8.4:
 react-is@^17.0.1:
   version "17.0.2"
 
-react-native-ble-plx@^3.1.2:
+react-native-ble-plx@^3.2.1:
   version "3.2.1"
   resolved "https://registry.npmjs.org/react-native-ble-plx/-/react-native-ble-plx-3.2.1.tgz"
   integrity sha512-cot4pu6qXh7DLcYh91n4BNI5Wm9/oMUSDj24G1tQ86F8sCFJ292AneKxRHkTH2+VxIGQuU2FVvWY1iY6ob0KZQ==
@@ -8444,6 +8444,11 @@ react-native-circular-progress@^1.3.9:
   integrity sha512-JnJE2pvyDVBdIJN49SziDMBmwn6cYTdrWVzpWFzVXzSzouZ9+0+N1nlGFM2zw3gqrJzjL+KktPTUf99IpU5yAg==
   dependencies:
     prop-types "^15.8.1"
+
+react-native-geolocation-service@^5.3.1:
+  version "5.3.1"
+  resolved "https://registry.npmjs.org/react-native-geolocation-service/-/react-native-geolocation-service-5.3.1.tgz"
+  integrity sha512-LTXPtPNmrdhx+yeWG47sAaCgQc3nG1z+HLLHlhK/5YfOgfLcAb9HAkhREPjQKPZOUx8pKZMIpdGFUGfJYtimXQ==
 
 react-native-gesture-handler@^2.15.0, "react-native-gesture-handler@>= 1.0.0", react-native-gesture-handler@>=1.10.1:
   version "2.17.1"
@@ -8466,6 +8471,11 @@ react-native-pager-view@*, react-native-pager-view@^6.3.3:
   version "6.3.3"
   resolved "https://registry.npmjs.org/react-native-pager-view/-/react-native-pager-view-6.3.3.tgz"
   integrity sha512-HViKBlfN/kBJUSu5mRL/V9Bkf1j7uDZozGAjbzh4o9XYo11qVcIK7IwvfzqrkNerVSDy/cAmZcXbcyWnII8xMA==
+
+react-native-permissions@^4.1.5:
+  version "4.1.5"
+  resolved "https://registry.npmjs.org/react-native-permissions/-/react-native-permissions-4.1.5.tgz"
+  integrity sha512-r6VMRacASmtRHS+GZ+5HQCp9p9kiE+UU9magHOZCXZLTJitdTuVHWZRrb4v4oqZGU+zAp3mZhTQftuMMv+WLUg==
 
 react-native-picker-select@^9.1.3:
   version "9.1.3"
@@ -8548,7 +8558,7 @@ react-native-vector-icons@^10.0.3:
     postcss-value-parser "^4.2.0"
     styleq "^0.1.3"
 
-react-native@*, "react-native@^0.0.0-0 || >=0.60 <1.0", "react-native@>= 0.64.3", react-native@>=0.50.0, react-native@>=0.68, react-native@>=0.71.0, react-native@>=0.72, react-native@0.74.3:
+react-native@*, "react-native@^0.0.0-0 || >=0.60 <1.0", "react-native@>= 0.64.3", react-native@>=0.50.0, react-native@>=0.68, react-native@>=0.70.0, react-native@>=0.71.0, react-native@>=0.72, react-native@0.74.3:
   version "0.74.3"
   dependencies:
     "@jest/create-cache-key-function" "^29.6.3"
@@ -8634,7 +8644,7 @@ react-test-renderer@18.2.0:
     react-shallow-renderer "^16.15.0"
     scheduler "^0.23.0"
 
-react@*, "react@^16.0.0 || ^17.0.0 || ^18.0.0", "react@^16.8.0 || ^17.0.0 || ^18.0.0", "react@^16.8.0 || ^17.0.0-rc.1", "react@^16.8.0 || ^17.0.0-rc.1 || ^18.0.0", react@^18.0.0, react@^18.2.0, "react@>= 17.0.1", react@>=16, react@>=16.0.0, react@>=16.8, react@>=17.0.0, react@>=17.0.2, react@18.2.0:
+react@*, "react@^16.0.0 || ^17.0.0 || ^18.0.0", "react@^16.8.0 || ^17.0.0 || ^18.0.0", "react@^16.8.0 || ^17.0.0-rc.1", "react@^16.8.0 || ^17.0.0-rc.1 || ^18.0.0", react@^18.0.0, react@^18.2.0, "react@>= 17.0.1", react@>=16, react@>=16.0.0, react@>=16.8, react@>=17.0.0, react@>=17.0.2, react@>=18.1.0, react@18.2.0:
   version "18.2.0"
   dependencies:
     loose-envify "^1.1.0"

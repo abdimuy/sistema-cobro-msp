@@ -1,4 +1,5 @@
-import {firebase, getFirestore} from '@react-native-firebase/firestore';
+import firebase from '@react-native-firebase/app';
+import firestore from '@react-native-firebase/firestore';
 import auth from '@react-native-firebase/auth';
 
 // TODO: Add SDKs for Firebase products that you want to use
@@ -16,22 +17,9 @@ export const firebaseConfig = {
 
 if (!firebase.apps.length) {
   firebase.initializeApp(firebaseConfig);
+  firebase.setLogLevel('debug');
 }
 
-export const db = getFirestore();
-
-db.settings({
-  persistence: true,
-})
-  .then(() => {
-    console.log('Firestore persistence enabled');
-  })
-  .catch(err => {
-    if (err.code === 'failed-precondition') {
-      console.error('Failed precondition: ', err);
-    } else if (err.code === 'unimplemented') {
-      console.error('Unimplemented: ', err);
-    }
-  });
+export const db = firestore();
 
 export {auth};

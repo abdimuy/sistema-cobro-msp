@@ -1,4 +1,4 @@
-import React, {useEffect} from 'react';
+import React, {useEffect, useState} from 'react';
 import 'react-native-gesture-handler';
 import {NavigationContainer} from '@react-navigation/native';
 
@@ -15,7 +15,11 @@ import useGetUser from './src/screens/auth/useGetUser';
 import SalesNavigator from './src/routes/SalesRoutes';
 import {Sale} from './src/screens/sales/Sales/sales.types';
 import useSales from './src/screens/sales/Sales/useSales';
-import {Timestamp, firebase} from '@react-native-firebase/firestore';
+import firestore, {Timestamp} from '@react-native-firebase/firestore';
+import {BleManager} from 'react-native-ble-plx';
+import {Alert, Linking, Platform, Text} from 'react-native';
+import Geolocation from '@react-native-community/geolocation';
+import {check, PERMISSIONS, request, RESULTS} from 'react-native-permissions';
 
 export type RootDrawerParamList = {
   Home: undefined;
@@ -244,6 +248,110 @@ function RootNav() {
 }
 
 const App = () => {
+  const manager = new BleManager();
+  const [bluetoothEnabled, setBluetoothEnabled] = useState(false);
+  const [gpsEnabled, setGpsEnabled] = useState(false);
+
+  const requestLocationPermission = async () => {
+    const permission =
+      Platform.OS === 'ios'
+        ? PERMISSIONS.IOS.LOCATION_WHEN_IN_USE
+        : PERMISSIONS.ANDROID.ACCESS_FINE_LOCATION;
+
+    const result = await check(permission);
+
+    if (result === RESULTS.GRANTED) {
+      return true;
+    } else if (result === RESULTS.DENIED) {
+      const newResult = await request(permission);
+      return newResult === RESULTS.GRANTED;
+    } else if (result === RESULTS.BLOCKED) {
+      Alert.alert(
+        'Permiso de GPS Denegado',
+        'Por favor, habilita el permiso de GPS desde la configuración.',
+        [
+          {
+            text: 'Abrir Configuración',
+            onPress: () => Linking.openSettings(),
+          },
+        ],
+        {cancelable: false},
+      );
+      return false;
+    }
+    return false;
+  };
+
+  useEffect(() => {
+    const subscription = manager.onStateChange(state => {
+      if (state === 'PoweredOn') {
+        setBluetoothEnabled(true);
+      } else if (state === 'PoweredOff') {
+        setBluetoothEnabled(false);
+      }
+    }, true);
+
+    const checkAndRequestGPS = async () => {
+      const hasLocationPermission = await requestLocationPermission();
+      if (hasLocationPermission) {
+        Geolocation.getCurrentPosition(
+          position => {
+            setGpsEnabled(true);
+          },
+          error => {
+            if (error.code === 2) {
+              // GPS deshabilitado
+              setGpsEnabled(false);
+              // showGPSAlert();
+            }
+          },
+          {enableHighAccuracy: true, timeout: 15000, maximumAge: 10000},
+        );
+      }
+    };
+
+    const intervalId = setInterval(() => {
+      checkAndRequestGPS();
+    }, 5000); // Verificar cada 5 segundos
+
+    return () => {
+      clearInterval(intervalId);
+      subscription.remove();
+    };
+  }, []);
+
+  useEffect(() => {
+    console.log('Initializing Firestore');
+    firestore()
+      .settings({
+        persistence: true,
+        cacheSizeBytes: firestore.CACHE_SIZE_UNLIMITED,
+      })
+      .then(() => {
+        console.log('Firestore initialized');
+      });
+  }, []);
+
+  if (!bluetoothEnabled) {
+    return (
+      <View style={{flex: 1, justifyContent: 'center', alignItems: 'center'}}>
+        <Text style={{fontSize: 20, textAlign: 'center'}}>
+          Esta aplicación requiere Bluetooth. Por favor actívalo.
+        </Text>
+      </View>
+    );
+  }
+
+  if (!gpsEnabled) {
+    return (
+      <View style={{flex: 1, justifyContent: 'center', alignItems: 'center'}}>
+        <Text style={{fontSize: 20, textAlign: 'center'}}>
+          Esta aplicación requiere GPS. Por favor actívalo.
+        </Text>
+      </View>
+    );
+  }
+
   return (
     <AuthProvider>
       <RootNav />

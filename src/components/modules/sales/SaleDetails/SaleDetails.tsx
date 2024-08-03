@@ -11,7 +11,7 @@ import {
   ScrollView,
   ActivityIndicator,
 } from 'react-native';
-import React, {useContext, useEffect, useMemo, useState} from 'react';
+import React, {useContext, useEffect, useMemo, useRef, useState} from 'react';
 import saleDetailsStyles from './saleDetails.style';
 import Icon from 'react-native-vector-icons/FontAwesome';
 import {PRIMARY_COLOR} from '../../../../contants/colors';
@@ -24,11 +24,11 @@ import {
   collection,
   doc,
   onSnapshot,
-  orderBy,
   query,
   where,
   writeBatch,
 } from '@react-native-firebase/firestore';
+import firestore from '@react-native-firebase/firestore';
 import {db} from '../../../../firebase/connection';
 import {AuthContext} from '../../../../../App';
 import useGetSale from '../../../../hooks/useGetSale';
@@ -69,6 +69,8 @@ const SaleDetails = () => {
   const {saleId} = route.params;
   const navigation = useNavigation<SaleDetailsNavigationProp>();
   const {sale, loading} = useGetSale(saleId);
+  const [loadingSave, setLoadingSave] = useState(false);
+  const refLoadingSave = useRef(loadingSave);
   const [lat, setLat] = useState(0);
   const [lng, setLng] = useState(0);
   const [modalVisible, setModalVisible] = useState(false);
@@ -82,6 +84,10 @@ const SaleDetails = () => {
   const [selectedFormaCobro, setSelectedFormaCobro] =
     useState<number>(PAGO_EN_EFECTIVO_ID);
   const [alertPayment, setAlertPayment] = useState<string>('');
+
+  useEffect(() => {
+    refLoadingSave.current = loadingSave;
+  }, [loadingSave]);
 
   const {productos, loading: productosLoading} = useGetProductosByFolio(
     sale.FOLIO,
@@ -140,6 +146,11 @@ const SaleDetails = () => {
   };
 
   const handleAddPayment = async () => {
+    if (refLoadingSave.current) return;
+    setLoadingSave(() => {
+      refLoadingSave.current = true;
+      return true;
+    });
     if (payment <= 0) return setAlertPayment('EL PAGO DEBE SER MAYOR A 0');
     requestLocationPermission().then(() => {
       Geolocation.getCurrentPosition(info => {
@@ -162,9 +173,14 @@ const SaleDetails = () => {
           GUARDADO_EN_MICROSIP: false,
         };
         try {
-          const batch = writeBatch(db);
-          batch.set(doc(collection(db, 'pagos')), data);
-          batch.update(doc(db, 'ventas', sale.ID), {
+          const batch = firestore().batch();
+          // batch.set(doc(collection(db, 'pagos')), data);
+          // batch.update(doc(db, 'ventas', sale.ID), {
+          //   SALDO_REST: sale.SALDO_REST - payment,
+          //   ESTADO_COBRANZA: 'PAGADO',
+          // });
+          batch.set(db.collection('pagos').doc(), data);
+          batch.update(db.collection('ventas').doc(sale.ID), {
             SALDO_REST: sale.SALDO_REST - payment,
             ESTADO_COBRANZA: 'PAGADO',
           });
@@ -175,11 +191,17 @@ const SaleDetails = () => {
           console.error('Error adding document: ', e);
         }
         setModalVisible(!modalVisible);
+        setLoadingSave(false);
       });
     });
   };
 
   const handleAddVisita = () => {
+    if (refLoadingSave.current) return;
+    setLoadingSave(() => {
+      refLoadingSave.current = true;
+      return true;
+    });
     requestLocationPermission().then(() => {
       Geolocation.getCurrentPosition(info => {
         const lat = info.coords.latitude;
@@ -207,6 +229,7 @@ const SaleDetails = () => {
         setModalVisitaVisible(!modalVisitaVisible);
       });
     });
+    setLoadingSave(false);
   };
 
   const handleOpenCondonacionModal = () => {
@@ -215,6 +238,11 @@ const SaleDetails = () => {
   };
 
   const handleAddCondonacion = () => {
+    if (refLoadingSave.current) return;
+    setLoadingSave(() => {
+      refLoadingSave.current = true;
+      return true;
+    });
     requestLocationPermission().then(() => {
       Geolocation.getCurrentPosition(info => {
         const lat = info.coords.latitude;
@@ -247,6 +275,7 @@ const SaleDetails = () => {
         setModalCondonacionVisible(!modalCondonacionVisible);
       });
     });
+    setLoadingSave(false);
   };
 
   const handleCloseCondonacionModal = () => {
@@ -582,10 +611,15 @@ const SaleDetails = () => {
                 saleDetailsStyles.addPayModalButton,
                 {backgroundColor: '#198754'},
               ]}
-              onPress={() => handleAddPayment()}>
-              <Text style={saleDetailsStyles.addPaymentButtonText}>
-                Agregar
-              </Text>
+              onPress={() => handleAddPayment()}
+              disabled={loadingSave}>
+              {loadingSave && <ActivityIndicator size="small" color="white" />}
+
+              {!loadingSave && (
+                <Text style={saleDetailsStyles.addPaymentButtonText}>
+                  Agregar
+                </Text>
+              )}
             </Pressable>
             <Pressable
               style={[
@@ -662,7 +696,8 @@ const SaleDetails = () => {
                 saleDetailsStyles.addPayModalButton,
                 {backgroundColor: '#198754'},
               ]}
-              onPress={handleAddVisita}>
+              onPress={handleAddVisita}
+              disabled={loadingSave}>
               <Text
                 style={saleDetailsStyles.addPaymentButtonText}
                 disabled={selectedNotaVisita !== ''}>
@@ -723,7 +758,8 @@ const SaleDetails = () => {
                 saleDetailsStyles.addPayModalClose,
                 {backgroundColor: '#dc3545'},
               ]}
-              onPress={() => handleCloseCondonacionModal()}>
+              onPress={() => handleCloseCondonacionModal()}
+              disabled={loadingSave}>
               <Text style={saleDetailsStyles.addPayModalCloseText}>
                 Cancelar
               </Text>
