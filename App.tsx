@@ -20,6 +20,7 @@ import {BleManager} from 'react-native-ble-plx';
 import {Alert, Linking, Platform, Text} from 'react-native';
 import Geolocation from '@react-native-community/geolocation';
 import {check, PERMISSIONS, request, RESULTS} from 'react-native-permissions';
+import {openDatabase} from './src/sqlite/connection';
 
 export type RootDrawerParamList = {
   Home: undefined;
@@ -282,7 +283,41 @@ const App = () => {
     return false;
   };
 
+  const initDb = async () => {
+    const db = await openDatabase();
+
+    await db.transaction(tx => {
+      tx.executeSql(
+        `CREATE TABLE IF NOT EXISTS pagos
+            (
+                ID TEXT PRIMARY KEY,
+                CLIENTE_ID INT,
+                NOMBRE_CLIENTE TEXT,
+                COBRADOR TEXT,
+                COBRADOR_ID INT,
+                DOCTO_CC_ID INT,
+                DOCTO_CC_ACR_ID INT,
+                FECHA_HORA_PAGO TEXT,
+                FORMA_COBRO_ID INT,
+                ZONA_CLIENTE_ID INT,
+                IMPORTE REAL,
+                LAT REAL,
+                LNG REAL,
+                GUARDADO_EN_MICROSIP INT
+            )
+        `,
+      );
+    });
+
+    return db;
+  };
+
   useEffect(() => {
+    async function GetPagosLocal() {
+      await initDb();
+    }
+    GetPagosLocal();
+
     const subscription = manager.onStateChange(state => {
       if (state === 'PoweredOn') {
         setBluetoothEnabled(true);

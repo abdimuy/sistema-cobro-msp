@@ -36,6 +36,9 @@ import {SalesStackParamList} from '../../../../routes/SalesRoutes';
 import {RouteProp, useNavigation, useRoute} from '@react-navigation/native';
 import {StackNavigationProp} from '@react-navigation/stack';
 import useGetProductosByFolio from '../../../../hooks/useGetProductosByFolio';
+import uuid from 'react-native-uuid';
+import {openDatabase} from '../../../../sqlite/connection';
+
 export interface Producto {
   ID: string;
   ARTICULO: string;
@@ -153,7 +156,7 @@ const SaleDetails = () => {
     });
     if (payment <= 0) return setAlertPayment('EL PAGO DEBE SER MAYOR A 0');
     requestLocationPermission().then(() => {
-      Geolocation.getCurrentPosition(info => {
+      Geolocation.getCurrentPosition(async info => {
         const lat = info.coords.latitude;
         const lng = info.coords.longitude;
 
@@ -173,13 +176,69 @@ const SaleDetails = () => {
           GUARDADO_EN_MICROSIP: false,
         };
         try {
+          const newUUID = uuid.v4().toString();
+
+          // ID TEXT PRIMARY KEY,
+          //   CLIENTE_ID INT,
+          //   NOMBRE_CLIENTE TEXT,
+          //   COBRADOR TEXT,
+          //   COBRADOR_ID INT,
+          //   DOCTO_CC_ID INT,
+          //   DOCTO_CC_ACR_ID INT,
+          //   FECHA_HORA_PAGO TEXT,
+          //   FORMA_COBRO_ID INT,
+          //   ZONA_CLIENTE_ID INT,
+          //   IMPORTE REAL,
+          //   LAT REAL,
+          //   LNG REAL,
+          //   GUARDADO_EN_MICROSIP
+          const dbSqlite = await openDatabase();
+
+          const result = await dbSqlite.executeSql(
+            `
+            INSERT INTO pagos
+              (
+                ID,
+                CLIENTE_ID,
+                NOMBRE_CLIENTE,
+                COBRADOR,
+                COBRADOR_ID,
+                DOCTO_CC_ID,
+                DOCTO_CC_ACR_ID,
+                FECHA_HORA_PAGO,
+                FORMA_COBRO_ID,
+                ZONA_CLIENTE_ID,
+                IMPORTE,
+                LAT,
+                LNG,
+                GUARDADO_EN_MICROSIP
+              ) VALUES (
+                '${newUUID}',
+                ${data.CLIENTE_ID},
+                '${data.NOMBRE_CLIENTE}',
+                '${data.COBRADOR}',
+                ${data.COBRADOR_ID},
+                ${data.DOCTO_CC_ID},
+                ${data.DOCTO_CC_ACR_ID},
+                '${data.FECHA_HORA_PAGO.toDate().toISOString()}',
+                ${data.FORMA_COBRO_ID},
+                ${data.ZONA_CLIENTE_ID},
+                ${data.IMPORTE},
+                ${data.LAT},
+                ${data.LNG},
+                ${data.GUARDADO_EN_MICROSIP}
+              )
+            `,
+          );
+          console.log('result', result);
+
           const batch = firestore().batch();
           // batch.set(doc(collection(db, 'pagos')), data);
           // batch.update(doc(db, 'ventas', sale.ID), {
           //   SALDO_REST: sale.SALDO_REST - payment,
           //   ESTADO_COBRANZA: 'PAGADO',
           // });
-          batch.set(db.collection('pagos').doc(), data);
+          batch.set(db.collection('pagos').doc(newUUID), data);
           batch.update(db.collection('ventas').doc(sale.ID), {
             SALDO_REST: sale.SALDO_REST - payment,
             ESTADO_COBRANZA: 'PAGADO',
@@ -247,8 +306,9 @@ const SaleDetails = () => {
       Geolocation.getCurrentPosition(info => {
         const lat = info.coords.latitude;
         const lng = info.coords.longitude;
-        const data = {
+        const data: PaymentDto = {
           CLIENTE_ID: sale.CLIENTE_ID,
+          NOMBRE_CLIENTE: sale.CLIENTE,
           FECHA_HORA_PAGO: Timestamp.fromDate(dayjs().toDate()),
           COBRADOR: sale.NOMBRE_COBRADOR,
           COBRADOR_ID: userData.COBRADOR_ID,

@@ -8,7 +8,11 @@ import {
   where,
 } from '@react-native-firebase/firestore';
 import {PAGOS_COLLECTION} from '../../../../constants/collections';
-import {Payment, PaymentWithCliente} from '../../sales/SaleDetails/SaleDetails';
+import {
+  PAGO_CON_TRANSFERENCIA_ID,
+  PAGO_EN_EFECTIVO_ID,
+  Payment,
+} from '../../sales/SaleDetails/SaleDetails';
 import {db} from '../../../../firebase/connection';
 import dayjs from 'dayjs';
 import {AuthContext} from '../../../../../App';
@@ -21,9 +25,6 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 const DailyReport = () => {
   const {userData} = useContext(AuthContext);
   const [pagos, setPagos] = useState<Payment[]>([]);
-  const [pagosConCliente, setPagosConCliente] = useState<PaymentWithCliente[]>(
-    [],
-  );
   const {sales} = useSales(userData.ZONA_CLIENTE_ID);
   const [date, setDate] = useState<Date>(dayjs().toDate());
   const [showDatePicker, setShowDatePicker] = useState<boolean>(false);
@@ -63,15 +64,15 @@ const DailyReport = () => {
     };
   }, [date]);
 
-  useEffect(() => {
-    const pagosConCliente = pagos.map(pago => {
-      const sale = sales.find(s => s.DOCTO_CC_ID === pago.DOCTO_CC_ID);
-      return {...pago, CLIENTE: sale?.CLIENTE} as PaymentWithCliente;
-    });
-    setPagosConCliente(pagosConCliente);
-  }, [pagos, sales]);
-
-  const total = pagos.reduce((acc, pago) => acc + pago.IMPORTE, 0);
+  const total = pagos.reduce((acc, pago) => {
+    if (
+      pago.FORMA_COBRO_ID === PAGO_EN_EFECTIVO_ID ||
+      pago.FORMA_COBRO_ID === PAGO_CON_TRANSFERENCIA_ID
+    ) {
+      return acc + pago.IMPORTE;
+    }
+    return acc;
+  }, 0);
 
   const ticketText = `REPORTE DIARIO DE COBRANZA
 
@@ -80,18 +81,29 @@ COBRADOR: ${userData.NOMBRE}
 
 --------------------------------
 
-${pagosConCliente
+${pagos
+  .filter(
+    pago =>
+      pago.FORMA_COBRO_ID === PAGO_EN_EFECTIVO_ID ||
+      pago.FORMA_COBRO_ID === PAGO_CON_TRANSFERENCIA_ID,
+  )
   .map(pago => {
     return `${dayjs(pago.FECHA_HORA_PAGO.toDate()).format(
       'HH:mm',
-    )} ${pago?.CLIENTE?.slice(0, 20)} $ ${pago.IMPORTE}
+    )} ${pago?.NOMBRE_CLIENTE?.slice(0, 20)} $ ${pago.IMPORTE}
 `;
   })
   .join('')}
 --------------------------------
 
 Total: $ ${NEGRITAS_ON}${total}${NEGRITAS_OFF}
-Total de pagos: ${pagos.length}
+Total de pagos: ${
+    pagos.filter(
+      pago =>
+        pago.FORMA_COBRO_ID === PAGO_EN_EFECTIVO_ID ||
+        pago.FORMA_COBRO_ID === PAGO_CON_TRANSFERENCIA_ID,
+    ).length
+  }
   `;
 
   return (
@@ -122,13 +134,13 @@ Total de pagos: ${pagos.length}
         />
       )}
       <ScrollView style={styles.list}>
-        {pagosConCliente.map(pago => (
+        {pagos.map(pago => (
           <View key={pago.ID} style={styles.item}>
             <View style={{maxWidth: '90%'}}>
               <Text style={styles.itemSubtitle}>
                 {dayjs(pago.FECHA_HORA_PAGO.toDate()).format('hh:mm A')}
               </Text>
-              <Text style={styles.itemTitle}>{pago.CLIENTE}</Text>
+              <Text style={styles.itemTitle}>{pago.NOMBRE_CLIENTE}</Text>
             </View>
             <Text style={styles.itemAmount}>$ {pago.IMPORTE}</Text>
           </View>

@@ -1,11 +1,11 @@
 import {View, Text, StyleSheet, Pressable, ScrollView} from 'react-native';
 import React, {useContext, useEffect, useState} from 'react';
+import {openDatabase} from '../../../../sqlite/connection';
 import {
   CONDONACION_ID,
   PAGO_CON_TRANSFERENCIA_ID,
   PAGO_EN_EFECTIVO_ID,
   Payment,
-  PaymentWithCliente,
 } from '../../sales/SaleDetails/SaleDetails';
 import {
   Timestamp,
@@ -18,18 +18,20 @@ import {PAGOS_COLLECTION} from '../../../../constants/collections';
 import {db} from '../../../../firebase/connection';
 import {AuthContext} from '../../../../../App';
 import dayjs from 'dayjs';
-import useSales from '../../../../screens/sales/Sales/useSales';
 import {NEGRITAS_OFF, NEGRITAS_ON} from '../../../../contants/printerCommans';
 import usePrinter from '../../../../hooks/usePrinter';
 import {Picker} from '@react-native-picker/picker';
+import {useIsFocused} from '@react-navigation/native';
+
+type LocalPayment = Omit<Payment, 'FECHA_HORA_PAGO'> & {
+  FECHA_HORA_PAGO: string;
+};
 
 const WeeklyReport = () => {
   const {userData} = useContext(AuthContext);
   const [pagos, setPagos] = useState<Payment[]>([]);
-  const [pagosConCliente, setPagosConCliente] = useState<PaymentWithCliente[]>(
-    [],
-  );
-  const {sales} = useSales(userData.ZONA_CLIENTE_ID);
+  const [localPagos, setLocalPagos] = useState<LocalPayment[]>([]);
+  const [reportType, setReportType] = useState<'local' | 'db'>('db');
 
   const {
     connectPrinter,
@@ -41,8 +43,47 @@ const WeeklyReport = () => {
     getListDevices,
   } = usePrinter();
 
+  const getLocalPayments = async () => {
+    try {
+      const dbSqlite = await openDatabase();
+      const [results] = await dbSqlite.executeSql(
+        `SELECT * FROM PAGOS WHERE ZONA_CLIENTE_ID = ? AND FECHA_HORA_PAGO >= ?`,
+        [
+          userData.ZONA_CLIENTE_ID,
+          userData.FECHA_CARGA_INICIAL.toDate().toISOString(),
+        ],
+      );
+
+      const pagos: LocalPayment[] = results.rows.raw() as LocalPayment[];
+      setLocalPagos(pagos);
+    } catch (error) {
+      console.error('Error getting local payments', error);
+    }
+  };
+
+  const deleteLocalPayments = async () => {
+    try {
+      console.log('Deleting local payments');
+      const dbSqlite = await openDatabase();
+      await dbSqlite.executeSql(`DELETE FROM PAGOS`);
+      console.log('Local payments deleted');
+    } catch (error) {
+      console.error('Error deleting local payments', error);
+    }
+  };
+
+  const isFocused = useIsFocused();
+
+  useEffect(() => {
+    if (isFocused) {
+      getListDevices();
+      getLocalPayments();
+    }
+  }, [isFocused]);
+
   useEffect(() => {
     getListDevices();
+    getLocalPayments();
     const q = query(
       collection(db, PAGOS_COLLECTION),
       where('ZONA_CLIENTE_ID', '==', userData.ZONA_CLIENTE_ID),
@@ -61,18 +102,6 @@ const WeeklyReport = () => {
     };
   }, []);
 
-  useEffect(() => {
-    const pagosConCliente = pagos.map(pago => {
-      const sale = sales.find(s => s.DOCTO_CC_ID === pago.DOCTO_CC_ID);
-      return {
-        ...pago,
-        CLIENTE: sale?.CLIENTE,
-        ID: pago.ID,
-      } as PaymentWithCliente;
-    });
-    setPagosConCliente(pagosConCliente);
-  }, [pagos, sales]);
-
   const total = pagos.reduce((acc, pago) => {
     if (
       pago.FORMA_COBRO_ID === PAGO_EN_EFECTIVO_ID ||
@@ -82,6 +111,17 @@ const WeeklyReport = () => {
     }
     return acc;
   }, 0);
+
+  const totalLocal = localPagos.reduce((acc, pago) => {
+    if (
+      pago.FORMA_COBRO_ID === PAGO_EN_EFECTIVO_ID ||
+      pago.FORMA_COBRO_ID === PAGO_CON_TRANSFERENCIA_ID
+    ) {
+      return acc + pago.IMPORTE;
+    }
+    return acc;
+  }, 0);
+
   const numeroPagos = pagos.length;
 
   const ticketText = `REPORTE SEMANAL DE COBRANZA
@@ -91,7 +131,7 @@ COBRADOR: ${userData.NOMBRE}
 
 --------------------------------
 PAGOS REALIZADOS
-${pagosConCliente
+${pagos
   .filter(
     pago =>
       pago.FORMA_COBRO_ID === PAGO_EN_EFECTIVO_ID ||
@@ -100,18 +140,18 @@ ${pagosConCliente
   .map(pago => {
     return `${dayjs(pago.FECHA_HORA_PAGO.toDate()).format(
       'HH:mm',
-    )} ${pago?.CLIENTE?.slice(0, 20)} $ ${pago.IMPORTE}
+    )} ${pago?.NOMBRE_CLIENTE?.slice(0, 20)} $ ${pago.IMPORTE}
 `;
   })
   .join('')}
 --------------------------------
 CONDONACIONES
-${pagosConCliente
+${pagos
   .filter(pago => pago.FORMA_COBRO_ID === CONDONACION_ID)
   .map(pago => {
     return `${dayjs(pago.FECHA_HORA_PAGO.toDate()).format(
       'HH:mm',
-    )} ${pago?.CLIENTE?.slice(0, 20)} $ ${pago.IMPORTE}
+    )} ${pago?.NOMBRE_CLIENTE?.slice(0, 20)} $ ${pago.IMPORTE}
 `;
   })
   .join('')}
@@ -119,7 +159,58 @@ ${pagosConCliente
 
 Total: $ ${NEGRITAS_ON}${total}${NEGRITAS_OFF}
 Total de pagos: ${
-    pagosConCliente.filter(
+    pagos.filter(
+      pago =>
+        pago.FORMA_COBRO_ID === PAGO_EN_EFECTIVO_ID ||
+        pago.FORMA_COBRO_ID === PAGO_CON_TRANSFERENCIA_ID,
+    ).length
+  }
+`;
+
+  const ticketTextLocal = `REPORTE SEMANAL DE COBRANZA (LOCAL)
+  
+FECHA: ${dayjs().format('DD/MM/YYYY')}
+COBRADOR: ${userData.NOMBRE}
+
+--------------------------------
+PAGOS REALIZADOS
+${localPagos
+  .filter(
+    pago =>
+      pago.FORMA_COBRO_ID === PAGO_EN_EFECTIVO_ID ||
+      pago.FORMA_COBRO_ID === PAGO_CON_TRANSFERENCIA_ID,
+  )
+  .map(pago => {
+    return `${dayjs(pago.FECHA_HORA_PAGO).format(
+      'HH:mm',
+    )} ${pago?.NOMBRE_CLIENTE?.slice(0, 20)} $ ${pago.IMPORTE}
+`;
+  })
+  .join('')}
+--------------------------------
+CONDONACIONES
+${localPagos
+  .filter(pago => pago.FORMA_COBRO_ID === CONDONACION_ID)
+  .map(pago => {
+    return `${dayjs(pago.FECHA_HORA_PAGO).format(
+      'HH:mm',
+    )} ${pago?.NOMBRE_CLIENTE?.slice(0, 20)} $ ${pago.IMPORTE}
+`;
+  })
+  .join('')}
+--------------------------------
+
+Total: $ ${NEGRITAS_ON}${localPagos.reduce((acc, pago) => {
+    if (
+      pago.FORMA_COBRO_ID === PAGO_EN_EFECTIVO_ID ||
+      pago.FORMA_COBRO_ID === PAGO_CON_TRANSFERENCIA_ID
+    ) {
+      return acc + pago.IMPORTE;
+    }
+    return acc;
+  }, 0)}${NEGRITAS_OFF}
+Total de pagos: ${
+    localPagos.filter(
       pago =>
         pago.FORMA_COBRO_ID === PAGO_EN_EFECTIVO_ID ||
         pago.FORMA_COBRO_ID === PAGO_CON_TRANSFERENCIA_ID,
@@ -129,22 +220,56 @@ Total de pagos: ${
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Reporte Semanal</Text>
+      <Text style={styles.title}>
+        Reporte Semanal {reportType === 'local' && 'Local'}
+      </Text>
+      {
+        <Pressable
+          style={[
+            styles.button,
+            {
+              marginBottom: 20,
+            },
+          ]}
+          onPress={() => {
+            setReportType(reportType === 'db' ? 'local' : 'db');
+          }}>
+          <Text style={styles.buttonText}>
+            {reportType === 'db'
+              ? 'Ver Reporte Local'
+              : 'Ver Reporte en la Nube'}
+          </Text>
+        </Pressable>
+      }
       <ScrollView style={styles.list}>
-        {pagosConCliente.map(pago => (
-          <View key={pago.ID} style={styles.item}>
-            <View style={{maxWidth: '90%'}}>
-              <Text style={styles.itemSubtitle}>
-                {dayjs(pago.FECHA_HORA_PAGO.toDate()).format(
-                  'DD/MM/YYYY - HH:mm A',
-                )}
-              </Text>
-              <Text style={styles.itemTitle}>{pago.CLIENTE}</Text>
-            </View>
-            <Text style={styles.itemAmount}>$ {pago.IMPORTE}</Text>
-          </View>
-        ))}
-        <Text style={styles.total}>Total: $ {total}</Text>
+        {reportType === 'db'
+          ? pagos.map(pago => (
+              <View key={pago.ID} style={styles.item}>
+                <View style={{maxWidth: '90%'}}>
+                  <Text style={styles.itemSubtitle}>
+                    {dayjs(pago.FECHA_HORA_PAGO.toDate()).format(
+                      'DD/MM/YYYY - HH:mm A',
+                    )}
+                  </Text>
+                  <Text style={styles.itemTitle}>{pago.NOMBRE_CLIENTE}</Text>
+                </View>
+                <Text style={styles.itemAmount}>$ {pago.IMPORTE}</Text>
+              </View>
+            ))
+          : localPagos.map(pago => (
+              <View key={pago.ID + 'local'} style={styles.item}>
+                <View style={{maxWidth: '90%'}}>
+                  <Text style={styles.itemSubtitle}>
+                    {dayjs(pago.FECHA_HORA_PAGO).format('DD/MM/YYYY - HH:mm A')}
+                  </Text>
+                  <Text style={styles.itemTitle}>{pago.NOMBRE_CLIENTE}</Text>
+                </View>
+                <Text style={styles.itemAmount}>$ {pago.IMPORTE}</Text>
+              </View>
+            ))}
+        <Text style={styles.total}>
+          Total: $ {reportType === 'db' ? total : totalLocal}
+        </Text>
       </ScrollView>
       <View style={styles.section}>
         <Text
@@ -181,7 +306,11 @@ Total de pagos: ${
       <Pressable
         style={[styles.button, {marginBottom: 20}]}
         onPress={() => {
-          print(ticketText);
+          if (reportType === 'db') {
+            print(ticketText);
+          } else {
+            print(ticketTextLocal);
+          }
         }}>
         <Text style={styles.buttonText}>Imprimir</Text>
       </Pressable>

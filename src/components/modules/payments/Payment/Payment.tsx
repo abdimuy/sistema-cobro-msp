@@ -19,6 +19,7 @@ import {NEGRITAS_OFF, NEGRITAS_ON} from '../../../../contants/printerCommans';
 import useGetProductosByFolio from '../../../../hooks/useGetProductosByFolio';
 import {AuthContext} from '../../../../../App';
 import {CONDONACION_ID} from '../../sales/SaleDetails/SaleDetails';
+import useGetPagosBySale from '../../../../hooks/useGetPagosBySale';
 
 type SaleDetailScreenRouteProp = RouteProp<SalesStackParamList, 'Payment'>;
 
@@ -28,9 +29,21 @@ export default function Payment() {
   const {paymentId, saleId} = route.params;
   const {pago, loading} = useGetPago(paymentId);
   const {sale, loading: saleLoading} = useGetSale(saleId);
+  const {payments, loading: paymentsLoading} = useGetPagosBySale(
+    sale.DOCTO_CC_ID,
+  );
   const {loading: productosLoading, productos} = useGetProductosByFolio(
     sale.FOLIO,
   );
+
+  // Ordenar pagos por fecha y solo los ultimos 5
+  const paymentsOrder = payments
+    .sort(
+      (a, b) =>
+        b.FECHA_HORA_PAGO.toDate().getTime() -
+        a.FECHA_HORA_PAGO.toDate().getTime(),
+    )
+    .slice(0, 5);
 
   const {
     devices,
@@ -64,6 +77,20 @@ VENDEDORES:
 ${sale.VENDEDOR_1 && '- ' + sale.VENDEDOR_1}
 ${sale.VENDEDOR_2 && '- ' + sale.VENDEDOR_2}
 ${sale.VENDEDOR_3 && '- ' + sale.VENDEDOR_3}
+
+--------------------------------
+
+HISTORIAL DE PAGOS
+${paymentsOrder
+  .map(
+    pago =>
+      `- ${
+        pago.FORMA_COBRO_ID === CONDONACION_ID ? 'CONDONACION' : 'ABONO'
+      }: $${pago.IMPORTE.toFixed(2)} - ${dayjs(
+        pago.FECHA_HORA_PAGO.toDate(),
+      ).format('DD/MM/YYYY')}`,
+  )
+  .join('\n')}
 
 --------------------------------
 
@@ -134,7 +161,9 @@ AGENTE: ${pago.COBRADOR}
       <Button
         disabled={loading || !selectedPrinter}
         title="IMPRIMIR TICKET"
-        onPress={() => print(ticketText)}
+        onPress={() => {
+          print(ticketText), console.log(ticketText);
+        }}
       />
       <View style={styles.section}>
         <Text style={styles.title}>TICKET DE COBRANZA</Text>
