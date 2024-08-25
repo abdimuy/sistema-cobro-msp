@@ -28,7 +28,8 @@ const useGetZonaCliente = (zonaClienteId: number) => {
       where('ZONA_CLIENTE_ID', '==', zonaClienteId),
     );
     const unsubscribe = onSnapshot(q, querySnapshot => {
-      querySnapshot.forEach(doc => {
+      if (!querySnapshot) return;
+      querySnapshot.docs.forEach(doc => {
         setZonaCliente({...doc.data(), ID: doc.id} as ZONA_CLIENTE);
       });
       setLoading(false);

@@ -22,6 +22,7 @@ const useGetProductosByFolio = (folio: string) => {
   useEffect(() => {
     const unsubscribe = onSnapshot(q, snapshot => {
       const productosTemp: Producto[] = [];
+      if (!snapshot) return;
       snapshot.forEach(doc => {
         productosTemp.push({...doc.data(), ID: doc.id} as Producto);
       });

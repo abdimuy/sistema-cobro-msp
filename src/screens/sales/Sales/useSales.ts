@@ -20,7 +20,8 @@ const useSales = (zona_cliente_id: number) => {
     );
     const unsubscribe = onSnapshot(q, querySnapshot => {
       const ventas: Sale[] = [];
-      querySnapshot.forEach(doc => {
+      if (!querySnapshot) return;
+      querySnapshot.docs.forEach(doc => {
         ventas.push({...doc.data(), ID: doc.id} as Sale);
       });
       setSales(ventas);

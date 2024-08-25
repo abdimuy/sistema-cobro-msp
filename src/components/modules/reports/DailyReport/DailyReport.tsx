@@ -52,8 +52,10 @@ const DailyReport = () => {
         '<=',
         Timestamp.fromDate(dayjs(date).endOf('day').toDate()),
       ),
+      where('FORMA_COBRO_ID', 'in', [157, 158, 52569]),
     );
     const unsubscribe = onSnapshot(q, snapshot => {
+      if (!snapshot) return;
       setPagos(
         snapshot.docs.map(doc => ({...doc.data(), ID: doc.id})) as Payment[],
       );

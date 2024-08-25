@@ -22,7 +22,8 @@ const useGetUser = (email: string, userMetadata: any) => {
       where('EMAIL', '==', email),
     );
     const unsubscribe = onSnapshot(q, querySnapshot => {
-      querySnapshot.forEach(doc => {
+      if (!querySnapshot) return;
+      querySnapshot.docs.forEach(doc => {
         setUser({...doc.data(), ID: doc.id} as User);
       });
       setLoading(false);

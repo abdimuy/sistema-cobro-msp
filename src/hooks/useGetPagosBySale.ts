@@ -8,18 +8,19 @@ import {Payment} from '../components/modules/sales/SaleDetails/SaleDetails';
 import {db} from '../firebase/connection';
 import {useState, useEffect} from 'react';
 
-export default function useGetPagosBySale(DOCTO_CC_ID: number) {
+export default function useGetPagosBySale(DOCTO_CC_ACR_ID: number) {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const getPayments = () => {
     setLoading(true);
     const q = query(
       collection(db, 'pagos'),
-      where('DOCTO_CC_ID', '==', DOCTO_CC_ID),
+      where('DOCTO_CC_ACR_ID', '==', DOCTO_CC_ACR_ID),
     );
     const unsubscribe = onSnapshot(q, querySnapshot => {
       const pagosList: Payment[] = [];
-      querySnapshot.forEach(doc => {
+      if (!querySnapshot) return;
+      querySnapshot.docs.forEach(doc => {
         pagosList.push({...doc.data(), ID: doc.id} as Payment);
       });
       setPayments(pagosList);
@@ -31,7 +32,7 @@ export default function useGetPagosBySale(DOCTO_CC_ID: number) {
   useEffect(() => {
     const unsubscribe = getPayments();
     return () => unsubscribe();
-  }, [DOCTO_CC_ID]);
+  }, [DOCTO_CC_ACR_ID]);
 
   return {payments, loading};
 }

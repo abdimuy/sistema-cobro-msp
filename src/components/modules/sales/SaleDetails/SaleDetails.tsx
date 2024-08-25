@@ -72,17 +72,18 @@ const SaleDetails = () => {
   const {saleId} = route.params;
   const navigation = useNavigation<SaleDetailsNavigationProp>();
   const {sale, loading} = useGetSale(saleId);
-  const [loadingSave, setLoadingSave] = useState(false);
+  const [loadingSave, setLoadingSave] = useState<boolean>(false);
   const refLoadingSave = useRef(loadingSave);
-  const [lat, setLat] = useState(0);
-  const [lng, setLng] = useState(0);
-  const [modalVisible, setModalVisible] = useState(false);
-  const [modalVisitaVisible, setModalVisitaVisible] = useState(false);
-  const [modalMapVisible, setModalMapVisible] = useState(false);
-  const [modalCondonacionVisible, setModalCondonacionVisible] = useState(false);
-  const [payment, setPayment] = useState(0);
+  const [lat, setLat] = useState<number>(0);
+  const [lng, setLng] = useState<number>(0);
+  const [modalVisible, setModalVisible] = useState<boolean>(false);
+  const [modalVisitaVisible, setModalVisitaVisible] = useState<boolean>(false);
+  const [modalMapVisible, setModalMapVisible] = useState<boolean>(false);
+  const [modalCondonacionVisible, setModalCondonacionVisible] =
+    useState<boolean>(false);
+  const [payment, setPayment] = useState<number>(0);
   const [payments, setPayments] = useState<Payment[]>([]);
-  const [notaVisita, setNotaVisita] = useState('');
+  const [notaVisita, setNotaVisita] = useState<string>('');
   const [selectedNotaVisita, setSelectedNotaVisita] = useState<string>('');
   const [selectedFormaCobro, setSelectedFormaCobro] =
     useState<number>(PAGO_EN_EFECTIVO_ID);
@@ -358,11 +359,12 @@ const SaleDetails = () => {
   const getPayments = () => {
     const q = query(
       collection(db, 'pagos'),
-      where('DOCTO_CC_ID', '==', sale.DOCTO_CC_ID),
+      where('DOCTO_CC_ACR_ID', '==', sale.DOCTO_CC_ACR_ID),
     );
     const unsubscribe = onSnapshot(q, querySnapshot => {
       const pagosList: Payment[] = [];
-      querySnapshot.forEach(doc => {
+      if (!querySnapshot) return;
+      querySnapshot.docs.forEach(doc => {
         pagosList.push({...doc.data(), ID: doc.id} as Payment);
       });
       setPayments(pagosList);

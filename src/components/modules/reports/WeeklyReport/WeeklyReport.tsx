@@ -23,8 +23,12 @@ import usePrinter from '../../../../hooks/usePrinter';
 import {Picker} from '@react-native-picker/picker';
 import {useIsFocused} from '@react-navigation/native';
 
-type LocalPayment = Omit<Payment, 'FECHA_HORA_PAGO'> & {
+export type LocalPayment = Omit<
+  Payment,
+  'FECHA_HORA_PAGO' | 'GUARDADO_EN_MICROSIP'
+> & {
   FECHA_HORA_PAGO: string;
+  GUARDADO_EN_MICROSIP: number;
 };
 
 const WeeklyReport = () => {
@@ -92,8 +96,10 @@ const WeeklyReport = () => {
         '>=',
         Timestamp.fromDate(userData.FECHA_CARGA_INICIAL.toDate()),
       ),
+      where('FORMA_COBRO_ID', 'in', [157, 158, 52569]),
     );
     const unsubscribe = onSnapshot(q, snapshot => {
+      if (!snapshot) return;
       setPagos(snapshot.docs.map(doc => doc.data()) as Payment[]);
     });
 

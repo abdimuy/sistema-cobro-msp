@@ -30,7 +30,7 @@ export default function Payment() {
   const {pago, loading} = useGetPago(paymentId);
   const {sale, loading: saleLoading} = useGetSale(saleId);
   const {payments, loading: paymentsLoading} = useGetPagosBySale(
-    sale.DOCTO_CC_ID,
+    sale.DOCTO_CC_ACR_ID,
   );
   const {loading: productosLoading, productos} = useGetProductosByFolio(
     sale.FOLIO,

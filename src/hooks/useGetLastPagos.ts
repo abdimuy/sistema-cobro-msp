@@ -22,7 +22,8 @@ const useGetLastPagos = (zonaClienteId: number) => {
     );
     const unsubscribe = onSnapshot(q, querySnapshot => {
       const pagos: Payment[] = [];
-      querySnapshot.forEach(doc => {
+      if (!querySnapshot) return;
+      querySnapshot.docs.forEach(doc => {
         pagos.push({...doc.data(), ID: doc.id} as Payment);
       });
       setPagos(pagos);

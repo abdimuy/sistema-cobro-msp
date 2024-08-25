@@ -18,6 +18,8 @@ const useGetPago = (pagoId: string) => {
     DOCTO_CC_ACR_ID: 0,
     FORMA_COBRO_ID: 0,
     ZONA_CLIENTE_ID: 0,
+    GUARDADO_EN_MICROSIP: false,
+    NOMBRE_CLIENTE: '',
   });
   const [loading, setLoading] = useState(true);
 

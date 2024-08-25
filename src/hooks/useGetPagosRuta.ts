@@ -10,10 +10,7 @@ import {
 import {useContext, useEffect, useState} from 'react';
 import {db} from '../firebase/connection';
 import {PAGOS_COLLECTION} from '../constants/collections';
-import {
-  Payment,
-  PaymentWithCliente,
-} from '../components/modules/sales/SaleDetails/SaleDetails';
+import {Payment} from '../components/modules/sales/SaleDetails/SaleDetails';
 import dayjs from 'dayjs';
 import {AuthContext} from '../../App';
 
@@ -22,9 +19,6 @@ const useGetPagosRuta = (zonaClienteId: number) => {
   const [pagos, setPagos] = useState<Payment[]>([]);
   const [pagosHoy, setPagosHoy] = useState<Payment[]>([]);
   const [lastPagos, setLastPagos] = useState<Payment[]>([]);
-  const [lastPagosWithCliente, setLastPagosWithCliente] = useState<
-    PaymentWithCliente[]
-  >([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -33,10 +27,12 @@ const useGetPagosRuta = (zonaClienteId: number) => {
       collection(db, PAGOS_COLLECTION),
       where('ZONA_CLIENTE_ID', '==', zonaClienteId),
       where('FECHA_HORA_PAGO', '>=', qDate),
+      where('FORMA_COBRO_ID', 'in', [157, 158, 52569]),
     );
     const unsubscribe = onSnapshot(q, querySnapshot => {
       const pagos: Payment[] = [];
-      querySnapshot.forEach(doc => {
+      if (!querySnapshot) return;
+      querySnapshot.docs.forEach(doc => {
         pagos.push({...doc.data(), ID: doc.id} as Payment);
       });
       setPagos(pagos);
@@ -58,11 +54,13 @@ const useGetPagosRuta = (zonaClienteId: number) => {
       collection(db, PAGOS_COLLECTION),
       where('ZONA_CLIENTE_ID', '==', zonaClienteId),
       where('FECHA_HORA_PAGO', '>=', qDate),
+      where('FORMA_COBRO_ID', 'in', [157, 158, 52569]),
     );
 
     const unsubscribe = onSnapshot(q, querySnapshot => {
       const pagos: Payment[] = [];
-      querySnapshot.forEach(doc => {
+      if (!querySnapshot) return;
+      querySnapshot.docs.forEach(doc => {
         pagos.push({...doc.data(), ID: doc.id} as Payment);
       });
       setPagosHoy(pagos);
@@ -83,7 +81,8 @@ const useGetPagosRuta = (zonaClienteId: number) => {
 
     const unsubscribe = onSnapshot(q, querySnapshot => {
       const pagos: Payment[] = [];
-      querySnapshot.forEach(doc => {
+      if (!querySnapshot) return;
+      querySnapshot.docs.forEach(doc => {
         pagos.push({...doc.data(), ID: doc.id} as Payment);
       });
       setLastPagos(pagos);
@@ -121,7 +120,7 @@ const useGetPagosRuta = (zonaClienteId: number) => {
   //   };
   // }, [lastPagos]);
 
-  return {pagos, loading, pagosHoy, lastPagos, lastPagosWithCliente};
+  return {pagos, loading, pagosHoy, lastPagos};
 };
 
 export default useGetPagosRuta;

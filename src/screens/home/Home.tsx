@@ -14,8 +14,23 @@ import {BACKGROUND_COLOR_PRIMARY, PRIMARY_COLOR} from '../../contants/colors';
 import FocusAwareStatusBar from '../../components/common/FocusAwareStatusBar/FocusAwareStatusBar';
 import {AuthContext} from '../../../App';
 import useGetPagosRuta from '../../hooks/useGetPagosRuta';
-import {Timestamp, doc, writeBatch} from '@react-native-firebase/firestore';
+import {
+  Timestamp,
+  collection,
+  doc,
+  query,
+  where,
+  writeBatch,
+} from '@react-native-firebase/firestore';
 import {auth, db} from '../../firebase/connection';
+import {openDatabase} from '../../sqlite/connection';
+import {LocalPayment} from '../../components/modules/reports/WeeklyReport/WeeklyReport';
+import {
+  Payment,
+  PaymentDto,
+} from '../../components/modules/sales/SaleDetails/SaleDetails';
+import {PAGOS_COLLECTION} from '../../constants/collections';
+import dayjs from 'dayjs';
 
 const Home = () => {
   const {
@@ -30,7 +45,6 @@ const Home = () => {
     pagos,
     pagosHoy,
     lastPagos,
-    lastPagosWithCliente,
   } = useGetPagosRuta(userData.ZONA_CLIENTE_ID);
 
   const totalCobradoSemanal = pagos.reduce(
@@ -66,6 +80,93 @@ const Home = () => {
         console.error('Error al realizar la carga inicial', error);
         setLoadingCargaInicial(false);
       });
+  };
+
+  const getPagosLocal = async (): Promise<LocalPayment[]> => {
+    try {
+      const db = await openDatabase();
+      const query =
+        'SELECT * FROM PAGOS WHERE ZONA_CLIENTE_ID = ? AND FECHA_HORA_PAGO >= ?';
+      const [result] = await db.executeSql(query, [
+        userData.ZONA_CLIENTE_ID,
+        userData.FECHA_CARGA_INICIAL.toDate().toISOString(),
+      ]);
+      const pagosLocal = result.rows.raw() as LocalPayment[];
+      return pagosLocal;
+    } catch (error) {
+      console.error('Error al obtener los pagos locales', error);
+      return [];
+    }
+  };
+
+  const getPagosFirebase = async (
+    zonaClienteId: number,
+  ): Promise<Payment[]> => {
+    try {
+      const qDate = Timestamp.fromDate(userData.FECHA_CARGA_INICIAL.toDate());
+      const q = query(
+        collection(db, PAGOS_COLLECTION),
+        where('ZONA_CLIENTE_ID', '==', zonaClienteId),
+        where('FECHA_HORA_PAGO', '>=', qDate),
+      );
+      const querySnapshot = await q.get({
+        source: 'server',
+      });
+      const pagos: Payment[] = [];
+      querySnapshot.docs.forEach(doc => {
+        if (!doc.metadata.fromCache) {
+          pagos.push({...doc.data(), ID: doc.id} as Payment);
+        }
+      });
+      return pagos;
+    } catch (error) {
+      console.error('Error al obtener los pagos de firebase', error);
+      return [];
+    }
+  };
+
+  const comparePagos = async () => {
+    try {
+      const pagosLocal = await getPagosLocal();
+      const pagosFirebase = await getPagosFirebase(userData.ZONA_CLIENTE_ID);
+      const pagosFirebaseIds = pagosFirebase.map(pago => pago.ID);
+      const pagosToUpload = pagosLocal.filter(
+        pago => !pagosFirebaseIds.includes(pago.ID),
+      );
+      console.log('Pagos to upload', pagosToUpload);
+
+      const batch = writeBatch(db);
+      pagosToUpload.forEach(pago => {
+        const ref = doc(db, PAGOS_COLLECTION, pago.ID);
+        const newPago: PaymentDto = {
+          ...pago,
+          GUARDADO_EN_MICROSIP: pago.GUARDADO_EN_MICROSIP === 0 ? false : true,
+          FECHA_HORA_PAGO: Timestamp.fromDate(
+            dayjs(pago.FECHA_HORA_PAGO).toDate(),
+          ),
+        };
+        batch.set(ref, newPago);
+      });
+
+      batch
+        .commit()
+        .then(() => {
+          console.log('Pagos sincronizados correctamente');
+          ToastAndroid.show(
+            'Pagos sincronizados correctamente',
+            ToastAndroid.SHORT,
+          );
+        })
+        .catch(error => {
+          console.error('Error al sincronizar los pagos', error);
+          ToastAndroid.show(
+            'Error al sincronizar los pagos',
+            ToastAndroid.SHORT,
+          );
+        });
+    } catch (error) {
+      console.error('Error al comparar los pagos', error);
+    }
   };
 
   const closeSession = () => {
@@ -206,18 +307,7 @@ const Home = () => {
 
         <View style={homeStyles.details}>
           <Text style={homeStyles.detailsTitleSecondary}>Ultimos pagos</Text>
-          <View style={homeStyles.detailsColumn}>
-            {lastPagosWithCliente.map(pago => (
-              <View key={pago.ID} style={homeStyles.detailsColumnItem}>
-                <Text style={homeStyles.detailsSubtitle}>
-                  {pago.FECHA_HORA_PAGO.toDate().toLocaleDateString()}
-                </Text>
-                <Text style={homeStyles.detailsSubtitle}>
-                  ${pago.CLIENTE_ID}
-                </Text>
-              </View>
-            ))}
-          </View>
+          <View style={homeStyles.detailsColumn}></View>
         </View>
       </View>
 
@@ -229,6 +319,10 @@ const Home = () => {
 
       <Pressable style={homeStyles.closeSesion} onPress={handleLogoutButton}>
         <Text style={homeStyles.closeSesionText}>Cerrar sesión</Text>
+      </Pressable>
+
+      <Pressable style={homeStyles.closeSesion} onPress={comparePagos}>
+        <Text style={homeStyles.closeSesionText}>Sincronizar pagos</Text>
       </Pressable>
     </ScrollView>
   );
