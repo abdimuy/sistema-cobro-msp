@@ -1,10 +1,8 @@
 import {useState, useEffect} from 'react';
-import {db} from '../firebase/connection';
-import {VENTAS_COLLECTION} from '../constants/collections';
-import {Sale} from '../screens/sales/Sales/sales.types';
-import {Timestamp, doc, onSnapshot} from '@react-native-firebase/firestore';
+import {SaleServer} from '../screens/home/Home';
+import getSaleLocal, {SaleFull} from '../services/getSaleLocal';
 
-const saleInitialState: Sale = {
+export const saleInitialState: SaleServer = {
   APLICADO: '',
   CALLE: '',
   CIUDAD: '',
@@ -14,11 +12,10 @@ const saleInitialState: Sale = {
   DOCTO_CC_ID: 0,
   ENGANCHE: 0,
   ESTADO: '',
-  ESTADO_COBRANZA: '',
-  FECHA: Timestamp.now(),
-  FECHA_ULT_PAGO: Timestamp.now(),
+  ESTADO_COBRANZA: 'PENDIENTE',
+  FECHA: '',
+  FECHA_ULT_PAGO: '',
   FOLIO: '',
-  ID: '',
   IMPORTE_PAGO_PROMEDIO: 0,
   IMPTE_REST: 0,
   LIMITE_CREDITO: 0,
@@ -39,27 +36,39 @@ const saleInitialState: Sale = {
   MONTO_A_CORTO_PLAZO: 0,
   DIA_COBRANZA: '',
   DIA_TEMPORAL_COBRANZA: '',
+  COBRADOR_ID: 0,
 };
 
-const useGetSale = (saleId: string) => {
-  const [sale, setSale] = useState<Sale>(saleInitialState);
+const saleFullInitialState: SaleFull = {
+  ...saleInitialState,
+  pagos: [],
+  PRODUCTOS: [],
+};
+
+const useGetSale = (saleId: number) => {
+  const [sale, setSale] = useState<SaleFull>(saleFullInitialState);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const unsubscribe = onSnapshot(
-      doc(db, VENTAS_COLLECTION, saleId),
-      snapshot => {
-        setSale({...snapshot.data(), ID: snapshot.id} as Sale);
+  const getSale = () => {
+    setLoading(true);
+    getSaleLocal(saleId)
+      .then(sale => {
+        setSale(sale);
         setLoading(false);
-      },
-    );
+      })
+      .catch(err => {
+        console.log(err);
+        setLoading(false);
+      });
+  };
 
-    return () => {
-      unsubscribe();
-    };
+  useEffect(() => {
+    if (saleId === 0 || !saleId) return;
+    setLoading(true);
+    getSale();
   }, [saleId]);
 
-  return {sale, loading};
+  return {sale, loading, getSaleAgain: getSale};
 };
 
 export default useGetSale;

@@ -15,6 +15,10 @@ const homeStyles = StyleSheet.create({
     // flex: 1,
     height: '100%',
   },
+  text: {
+    color: 'black',
+    fontSize: 16,
+  },
   statsTitle: {
     color: TEXT_COLOR_SECONDARY,
     fontSize: 24,
@@ -131,6 +135,13 @@ const homeStyles = StyleSheet.create({
   detailsColumnItem: {
     display: 'flex',
     flexDirection: 'column',
+  },
+  row: {
+    display: 'flex',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 15,
   },
   map: {
     width: '100%',

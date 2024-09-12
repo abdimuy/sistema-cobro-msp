@@ -16,10 +16,10 @@ import useGetPago from '../../../../hooks/useGetPago';
 import useGetSale from '../../../../hooks/useGetSale';
 import dayjs from 'dayjs';
 import {NEGRITAS_OFF, NEGRITAS_ON} from '../../../../contants/printerCommans';
-import useGetProductosByFolio from '../../../../hooks/useGetProductosByFolio';
 import {AuthContext} from '../../../../../App';
 import {CONDONACION_ID} from '../../sales/SaleDetails/SaleDetails';
 import useGetPagosBySale from '../../../../hooks/useGetPagosBySale';
+import useGetProductosByFolio from '../../../../hooks/useGetProductosByFolio';
 
 type SaleDetailScreenRouteProp = RouteProp<SalesStackParamList, 'Payment'>;
 
@@ -40,8 +40,8 @@ export default function Payment() {
   const paymentsOrder = payments
     .sort(
       (a, b) =>
-        b.FECHA_HORA_PAGO.toDate().getTime() -
-        a.FECHA_HORA_PAGO.toDate().getTime(),
+        new Date(b.FECHA_HORA_PAGO).getTime() -
+        new Date(a.FECHA_HORA_PAGO).getTime(),
     )
     .slice(0, 5);
 
@@ -69,7 +69,7 @@ FOLIO: ${sale.FOLIO}
 CLIENTE: ${NEGRITAS_ON}${sale.CLIENTE}${NEGRITAS_OFF}
 DIRECCION: ${sale.CALLE + ' ' + sale.CIUDAD + ', ' + sale.ESTADO}
 TELEFONO: ${sale.TELEFONO}
-FECHA VENTA: ${dayjs(sale.FECHA.toDate()).format('DD/MM/YYYY')}
+FECHA VENTA: ${dayjs(sale.FECHA).format('DD/MM/YYYY')}
 TOTAL VENTA: $${sale.PRECIO_TOTAL.toFixed(2)}
 ENGANCHE: $${sale.ENGANCHE.toFixed(2)}
 PARCIALIDAD: $${sale.PARCIALIDAD.toFixed(2)}
@@ -86,9 +86,9 @@ ${paymentsOrder
     pago =>
       `- ${
         pago.FORMA_COBRO_ID === CONDONACION_ID ? 'CONDONACION' : 'ABONO'
-      }: $${pago.IMPORTE.toFixed(2)} - ${dayjs(
-        pago.FECHA_HORA_PAGO.toDate(),
-      ).format('DD/MM/YYYY')}`,
+      }: $${pago.IMPORTE.toFixed(2)} - ${dayjs(pago.FECHA_HORA_PAGO).format(
+        'DD/MM/YYYY',
+      )}`,
   )
   .join('\n')}
 
@@ -107,7 +107,7 @@ ${productos
 
 --------------------------------
 
-FECHA DE ${TICKET_TYPE}: ${dayjs(pago.FECHA_HORA_PAGO.toDate()).format(
+FECHA DE ${TICKET_TYPE}: ${dayjs(pago.FECHA_HORA_PAGO).format(
     'DD/MM/YYYY HH:mm',
   )}
 IMPORTE DE ${TICKET_TYPE}: $${pago.IMPORTE.toFixed(2)}
@@ -130,7 +130,12 @@ WHATSAPP: 238-1105061
 AGENTE: ${pago.COBRADOR}
 `;
 
-  const isLoading = loading || saleLoading || printerLoading;
+  const isLoading =
+    loading ||
+    saleLoading ||
+    printerLoading ||
+    paymentsLoading ||
+    productosLoading;
 
   if (isLoading) {
     return <ActivityIndicator />;
@@ -188,7 +193,7 @@ AGENTE: ${pago.COBRADOR}
         <Text style={styles.item}>
           <Text style={styles.label}>FECHA VENTA: </Text>
           <Text style={styles.value}>
-            {dayjs(sale.FECHA.toDate()).format('DD/MM/YYYY')}
+            {dayjs(sale.FECHA).format('DD/MM/YYYY')}
           </Text>
         </Text>
         <Text style={styles.item}>
@@ -215,7 +220,7 @@ AGENTE: ${pago.COBRADOR}
         <Text style={styles.divider} />
         <Text style={styles.label}>PRODUCTOS</Text>
         {productos.map(producto => (
-          <Text style={styles.item} key={producto.ID}>
+          <Text style={styles.item} key={producto.POSICION}>
             <Text style={styles.label}>{producto.ARTICULO}: </Text>
             <Text style={styles.value}>
               ${producto.PRECIO_UNITARIO_IMPTO.toFixed(2)} x {producto.CANTIDAD}
@@ -227,7 +232,7 @@ AGENTE: ${pago.COBRADOR}
         <Text style={styles.item}>
           <Text style={styles.label}>FECHA PAGO: </Text>
           <Text style={styles.value}>
-            {dayjs(pago.FECHA_HORA_PAGO.toDate()).format('DD/MM/YYYY HH:mm')}
+            {dayjs(pago.FECHA_HORA_PAGO).format('DD/MM/YYYY HH:mm')}
           </Text>
         </Text>
         <Text style={styles.item}>

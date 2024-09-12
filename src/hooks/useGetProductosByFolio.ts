@@ -1,38 +1,30 @@
 import {useState, useEffect} from 'react';
-import {db} from '../firebase/connection';
-import {VENTAS_PRODUCTOS_COLLECTION} from '../constants/collections';
 import {Producto} from '../components/modules/sales/SaleDetails/SaleDetails';
-import {
-  collection,
-  onSnapshot,
-  query,
-  where,
-} from '@react-native-firebase/firestore';
+import {openDatabase} from '../sqlite/connection';
 
 const useGetProductosByFolio = (folio: string) => {
   const [productos, setProductos] = useState<Producto[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const q = query(
-    collection(db, VENTAS_PRODUCTOS_COLLECTION),
+  const getProducts = async () => {
+    setLoading(true);
+    const dbSqlite = await openDatabase();
+    const query = `
+      SELECT * FROM productos
+      WHERE FOLIO = '${folio}'
+    `;
 
-    where('FOLIO', '==', folio),
-  );
+    const [result] = await dbSqlite.executeSql(query);
+    const productos: Producto[] = result.rows.raw();
+    setProductos(productos);
+    setLoading(false);
+  };
 
   useEffect(() => {
-    const unsubscribe = onSnapshot(q, snapshot => {
-      const productosTemp: Producto[] = [];
-      if (!snapshot) return;
-      snapshot.forEach(doc => {
-        productosTemp.push({...doc.data(), ID: doc.id} as Producto);
-      });
-      setProductos(productosTemp);
+    getProducts().catch(err => {
+      console.log(err);
       setLoading(false);
     });
-
-    return () => {
-      unsubscribe();
-    };
   }, [folio]);
 
   return {productos, loading};

@@ -23,12 +23,8 @@ import {
   Timestamp,
   collection,
   doc,
-  onSnapshot,
-  query,
-  where,
   writeBatch,
 } from '@react-native-firebase/firestore';
-import firestore from '@react-native-firebase/firestore';
 import {db} from '../../../../firebase/connection';
 import {AuthContext} from '../../../../../App';
 import useGetSale from '../../../../hooks/useGetSale';
@@ -36,11 +32,12 @@ import {SalesStackParamList} from '../../../../routes/SalesRoutes';
 import {RouteProp, useNavigation, useRoute} from '@react-navigation/native';
 import {StackNavigationProp} from '@react-navigation/stack';
 import useGetProductosByFolio from '../../../../hooks/useGetProductosByFolio';
-import uuid from 'react-native-uuid';
 import {openDatabase} from '../../../../sqlite/connection';
+import {PagoServer} from '../../../../screens/home/Home';
+import api from '../../../../services/api';
+import sendPago from '../../../../services/sendPago';
 
 export interface Producto {
-  ID: string;
   ARTICULO: string;
   ARTICULO_ID: number;
   CANTIDAD: number;
@@ -71,7 +68,7 @@ const SaleDetails = () => {
   const route = useRoute<SaleDetailScreenRouteProp>();
   const {saleId} = route.params;
   const navigation = useNavigation<SaleDetailsNavigationProp>();
-  const {sale, loading} = useGetSale(saleId);
+  const {sale, loading, getSaleAgain} = useGetSale(saleId);
   const [loadingSave, setLoadingSave] = useState<boolean>(false);
   const refLoadingSave = useRef(loadingSave);
   const [lat, setLat] = useState<number>(0);
@@ -82,7 +79,6 @@ const SaleDetails = () => {
   const [modalCondonacionVisible, setModalCondonacionVisible] =
     useState<boolean>(false);
   const [payment, setPayment] = useState<number>(0);
-  const [payments, setPayments] = useState<Payment[]>([]);
   const [notaVisita, setNotaVisita] = useState<string>('');
   const [selectedNotaVisita, setSelectedNotaVisita] = useState<string>('');
   const [selectedFormaCobro, setSelectedFormaCobro] =
@@ -149,6 +145,12 @@ const SaleDetails = () => {
     setPayment(0);
   };
 
+  const generateIdUnique = (): number => {
+    const timestamp = Date.now();
+    const random = Math.floor(Math.random() * 1000);
+    return Number(`${timestamp}${random}`);
+  };
+
   const handleAddPayment = async () => {
     if (refLoadingSave.current) return;
     setLoadingSave(() => {
@@ -158,98 +160,35 @@ const SaleDetails = () => {
     if (payment <= 0) return setAlertPayment('EL PAGO DEBE SER MAYOR A 0');
     requestLocationPermission().then(() => {
       Geolocation.getCurrentPosition(async info => {
+        const id = generateIdUnique();
         const lat = info.coords.latitude;
         const lng = info.coords.longitude;
 
         const data: PaymentDto = {
           CLIENTE_ID: sale.CLIENTE_ID,
           NOMBRE_CLIENTE: sale.CLIENTE,
-          FECHA_HORA_PAGO: Timestamp.fromDate(dayjs().toDate()),
+          FECHA_HORA_PAGO: dayjs().toISOString(),
           COBRADOR: sale.NOMBRE_COBRADOR,
           COBRADOR_ID: userData.COBRADOR_ID,
           LAT: lat,
           LNG: lng,
           IMPORTE: payment,
-          DOCTO_CC_ID: sale.DOCTO_CC_ID,
+          DOCTO_CC_ID: id,
           DOCTO_CC_ACR_ID: sale.DOCTO_CC_ACR_ID,
           FORMA_COBRO_ID: selectedFormaCobro,
           ZONA_CLIENTE_ID: sale.ZONA_CLIENTE_ID,
           GUARDADO_EN_MICROSIP: false,
         };
+
         try {
-          const newUUID = uuid.v4().toString();
-
-          // ID TEXT PRIMARY KEY,
-          //   CLIENTE_ID INT,
-          //   NOMBRE_CLIENTE TEXT,
-          //   COBRADOR TEXT,
-          //   COBRADOR_ID INT,
-          //   DOCTO_CC_ID INT,
-          //   DOCTO_CC_ACR_ID INT,
-          //   FECHA_HORA_PAGO TEXT,
-          //   FORMA_COBRO_ID INT,
-          //   ZONA_CLIENTE_ID INT,
-          //   IMPORTE REAL,
-          //   LAT REAL,
-          //   LNG REAL,
-          //   GUARDADO_EN_MICROSIP
-          const dbSqlite = await openDatabase();
-
-          const result = await dbSqlite.executeSql(
-            `
-            INSERT INTO pagos
-              (
-                ID,
-                CLIENTE_ID,
-                NOMBRE_CLIENTE,
-                COBRADOR,
-                COBRADOR_ID,
-                DOCTO_CC_ID,
-                DOCTO_CC_ACR_ID,
-                FECHA_HORA_PAGO,
-                FORMA_COBRO_ID,
-                ZONA_CLIENTE_ID,
-                IMPORTE,
-                LAT,
-                LNG,
-                GUARDADO_EN_MICROSIP
-              ) VALUES (
-                '${newUUID}',
-                ${data.CLIENTE_ID},
-                '${data.NOMBRE_CLIENTE}',
-                '${data.COBRADOR}',
-                ${data.COBRADOR_ID},
-                ${data.DOCTO_CC_ID},
-                ${data.DOCTO_CC_ACR_ID},
-                '${data.FECHA_HORA_PAGO.toDate().toISOString()}',
-                ${data.FORMA_COBRO_ID},
-                ${data.ZONA_CLIENTE_ID},
-                ${data.IMPORTE},
-                ${data.LAT},
-                ${data.LNG},
-                ${data.GUARDADO_EN_MICROSIP}
-              )
-            `,
-          );
-          console.log('result', result);
-
-          const batch = firestore().batch();
-          // batch.set(doc(collection(db, 'pagos')), data);
-          // batch.update(doc(db, 'ventas', sale.ID), {
-          //   SALDO_REST: sale.SALDO_REST - payment,
-          //   ESTADO_COBRANZA: 'PAGADO',
-          // });
-          batch.set(db.collection('pagos').doc(newUUID), data);
-          batch.update(db.collection('ventas').doc(sale.ID), {
-            SALDO_REST: sale.SALDO_REST - payment,
-            ESTADO_COBRANZA: 'PAGADO',
-          });
-          batch.commit();
-
+          await sendPago(data);
           setModalVisible(false);
         } catch (e) {
           console.error('Error adding document: ', e);
         }
+
+        getSaleAgain();
+        goToPayment(id);
         setModalVisible(!modalVisible);
         setLoadingSave(false);
       });
@@ -304,35 +243,97 @@ const SaleDetails = () => {
       return true;
     });
     requestLocationPermission().then(() => {
-      Geolocation.getCurrentPosition(info => {
+      Geolocation.getCurrentPosition(async info => {
         const lat = info.coords.latitude;
         const lng = info.coords.longitude;
+
         const data: PaymentDto = {
           CLIENTE_ID: sale.CLIENTE_ID,
           NOMBRE_CLIENTE: sale.CLIENTE,
-          FECHA_HORA_PAGO: Timestamp.fromDate(dayjs().toDate()),
+          FECHA_HORA_PAGO: dayjs().toISOString(),
           COBRADOR: sale.NOMBRE_COBRADOR,
           COBRADOR_ID: userData.COBRADOR_ID,
           LAT: lat,
           LNG: lng,
-          IMPORTE: sale.SALDO_REST,
-          DOCTO_CC_ID: sale.DOCTO_CC_ID,
+          IMPORTE: payment,
+          DOCTO_CC_ID: generateIdUnique(),
           DOCTO_CC_ACR_ID: sale.DOCTO_CC_ACR_ID,
           FORMA_COBRO_ID: CONDONACION_ID,
           ZONA_CLIENTE_ID: sale.ZONA_CLIENTE_ID,
           GUARDADO_EN_MICROSIP: false,
         };
         try {
-          const batch = writeBatch(db);
-          batch.set(doc(collection(db, 'pagos')), data);
-          batch.update(doc(db, 'ventas', sale.ID), {
-            SALDO_REST: sale.SALDO_REST - data.IMPORTE,
-            ESTADO_COBRANZA: 'PAGADO',
-          });
-          batch.commit();
+          const dbSqlite = await openDatabase();
+          const result = dbSqlite.executeSql(
+            `
+            INSERT INTO pagos
+              (
+                CLIENTE_ID,
+                NOMBRE_CLIENTE,
+                COBRADOR,
+                COBRADOR_ID,
+                DOCTO_CC_ID,
+                DOCTO_CC_ACR_ID,
+                FECHA_HORA_PAGO,
+                FORMA_COBRO_ID,
+                ZONA_CLIENTE_ID,
+                IMPORTE,
+                LAT,
+                LNG,
+                GUARDADO_EN_MICROSIP
+              ) VALUES (
+                ${data.CLIENTE_ID},
+                '${data.NOMBRE_CLIENTE}',
+                '${data.COBRADOR}',
+                ${data.COBRADOR_ID},
+                ${data.DOCTO_CC_ID},
+                ${data.DOCTO_CC_ACR_ID},
+                '${dayjs(data.FECHA_HORA_PAGO).toISOString()}',
+                ${data.FORMA_COBRO_ID},
+                ${data.ZONA_CLIENTE_ID},
+                ${data.IMPORTE},
+                ${data.LAT},
+                ${data.LNG},
+                ${data.GUARDADO_EN_MICROSIP}
+                )
+                `,
+          );
+          console.log('result', result);
+
+          const query = `
+            UPDATE ventas
+            SET
+              SALDO_REST = SALDO_REST - ${payment},
+              ESTADO_COBRANZA = 'PAGADO'
+            WHERE DOCTO_CC_ID = ${sale.DOCTO_CC_ID}
+          `;
+
+          const resultUpdate = dbSqlite.executeSql(query);
+          console.log('resultUpdate', resultUpdate);
+
+          const response = await api.post<{err: ''; body: string}>(
+            'ventas/add-pago',
+            {pago: data},
+            {
+              timeout: 7000,
+            },
+          );
+          console.log('response', response.data);
+
+          const queryUpdateGuardado = `
+            UPDATE pagos
+            SET GUARDADO_EN_MICROSIP = 1
+            WHERE DOCTO_CC_ID = ${data.DOCTO_CC_ACR_ID}
+          `;
+          const resultUpdateGuardado = dbSqlite.executeSql(queryUpdateGuardado);
+          console.log('resultUpdateGuardado', resultUpdateGuardado);
+
+          setModalCondonacionVisible(false);
         } catch (e) {
           console.error('Error adding document: ', e);
         }
+        getSaleAgain();
+        goToPayment(data.DOCTO_CC_ID);
         setModalCondonacionVisible(!modalCondonacionVisible);
       });
     });
@@ -356,27 +357,6 @@ const SaleDetails = () => {
     setPayment(0);
   };
 
-  const getPayments = () => {
-    const q = query(
-      collection(db, 'pagos'),
-      where('DOCTO_CC_ACR_ID', '==', sale.DOCTO_CC_ACR_ID),
-    );
-    const unsubscribe = onSnapshot(q, querySnapshot => {
-      const pagosList: Payment[] = [];
-      if (!querySnapshot) return;
-      querySnapshot.docs.forEach(doc => {
-        pagosList.push({...doc.data(), ID: doc.id} as Payment);
-      });
-      setPayments(pagosList);
-    });
-    return unsubscribe;
-  };
-
-  useEffect(() => {
-    let listener = getPayments();
-    return () => listener();
-  }, [sale]);
-
   const handleInputPaymentChange = (text: string) => {
     if (text === '') return setPayment(0);
     if (parseInt(text) < 0) return setPayment(0);
@@ -390,25 +370,26 @@ const SaleDetails = () => {
     setPayment(parseInt(text));
   };
 
-  const goToPayment = (paymentId: string) => {
+  const goToPayment = (paymentId: number) => {
     navigation.navigate('Payment', {paymentId: paymentId, saleId: saleId});
   };
 
-  const paymentsOrder = payments.sort(
+  const paymentsOrder = sale.pagos.sort(
     (a, b) =>
-      b.FECHA_HORA_PAGO.toDate().getTime() -
-      a.FECHA_HORA_PAGO.toDate().getTime(),
+      new Date(b.FECHA_HORA_PAGO).getTime() -
+      new Date(a.FECHA_HORA_PAGO).getTime(),
   );
 
   useEffect(() => {
-    if (payments.length > 0) {
+    if (sale.pagos.length > 0) {
       const lastPayment = paymentsOrder[0];
-      setLat(lastPayment.LAT);
-      setLng(lastPayment.LNG);
+      setLat(Number(lastPayment.LAT));
+      setLng(Number(lastPayment.LNG));
     }
-  }, [payments]);
+  }, [sale.pagos]);
 
-  if (loading || productosLoading) {
+  // if (loading || productosLoading) {
+  if (loading) {
     return (
       <View style={saleDetailsStyles.loaderContainer}>
         <ActivityIndicator size="large" color={PRIMARY_COLOR} />
@@ -474,7 +455,7 @@ const SaleDetails = () => {
         <View style={saleDetailsStyles.personalInfoItem}>
           <Text style={saleDetailsStyles.textTertiary}>Fecha de venta:</Text>
           <Text style={saleDetailsStyles.textSecondary}>
-            {sale.FECHA.toDate().toLocaleDateString()}
+            {dayjs(sale.FECHA).format('DD/MM/YYYY')}
           </Text>
         </View>
         <View style={saleDetailsStyles.personalInfoItem}>
@@ -558,7 +539,7 @@ const SaleDetails = () => {
         </View> */}
         <Text style={saleDetailsStyles.subtitle}>Productos</Text>
         {productos.map((producto: Producto) => (
-          <View style={saleDetailsStyles.productoItem} key={producto.ID}>
+          <View style={saleDetailsStyles.productoItem} key={producto.POSICION}>
             <Text
               style={[
                 saleDetailsStyles.textSecondary,
@@ -838,11 +819,11 @@ const SaleDetails = () => {
       </Pressable>
       <View style={saleDetailsStyles.payments}>
         <Text style={saleDetailsStyles.subtitle}>Historial de pagos</Text>
-        {paymentsOrder.map((payment: Payment) => (
+        {paymentsOrder.map((payment: PagoServer) => (
           <PaymentItem
-            key={payment.ID}
+            key={payment.DOCTO_CC_ID}
             payment={payment}
-            onPress={() => goToPayment(payment.ID)}
+            onPress={() => goToPayment(payment.DOCTO_CC_ID)}
           />
         ))}
       </View>
@@ -857,7 +838,7 @@ export interface Payment {
   COBRADOR_ID: number;
   DOCTO_CC_ID: number;
   DOCTO_CC_ACR_ID: number;
-  FECHA_HORA_PAGO: Timestamp;
+  FECHA_HORA_PAGO: string;
   FORMA_COBRO_ID: number;
   ZONA_CLIENTE_ID: number;
   ID: string;
@@ -877,14 +858,14 @@ const PaymentItem = ({
   payment,
   onPress,
 }: {
-  payment: Payment;
+  payment: PagoServer;
   onPress: Function;
 }) => {
   return (
     <Pressable style={saleDetailsStyles.paymentItem} onPress={() => onPress()}>
       <Text style={saleDetailsStyles.textSecondary}>{payment.COBRADOR}</Text>
       <Text style={saleDetailsStyles.textTertiary}>
-        {dayjs(payment.FECHA_HORA_PAGO.toDate()).format('DD/MM/YYYY - hh:mm a')}
+        {dayjs(payment.FECHA_HORA_PAGO).format('DD/MM/YYYY - hh:mm a')}
       </Text>
       <Text style={saleDetailsStyles.textSecondary}>${payment.IMPORTE}</Text>
       <Text style={saleDetailsStyles.textTertiary}>
@@ -892,6 +873,9 @@ const PaymentItem = ({
         {payment.FORMA_COBRO_ID === PAGO_CON_TRANSFERENCIA_ID &&
           'TRANSFERENCIA'}
         {payment.FORMA_COBRO_ID === CONDONACION_ID && 'CONDONACIÓN'}
+      </Text>
+      <Text style={saleDetailsStyles.textSecondary}>
+        {payment.GUARDADO_EN_MICROSIP ? 'Enviado' : 'No enviado'}
       </Text>
     </Pressable>
   );

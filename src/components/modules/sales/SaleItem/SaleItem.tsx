@@ -4,14 +4,14 @@ import saleItemStyles from './saleItem.styles';
 import {PRIMARY_COLOR, TEXT_COLOR_SECONDARY} from '../../../../contants/colors';
 import ProgressBar from '../../../common/ProgressBar/ProgressBar';
 import {CheckIcon, Icon, RemoveIcon, CloseIcon} from '@gluestack-ui/themed';
-import {Sale} from '../../../../screens/sales/Sales/sales.types';
 import useGetProductosByFolio from '../../../../hooks/useGetProductosByFolio';
+import {SaleWithProductos} from '../../../../services/getSaleLocal';
 
 const SaleItem = ({
   sale,
   onPress = () => {},
 }: {
-  sale: Sale;
+  sale: SaleWithProductos;
   onPress?: Function;
 }) => {
   const progress = useMemo(() => {
@@ -21,8 +21,6 @@ const SaleItem = ({
   const isNew = useMemo(() => {
     return sale.PRECIO_TOTAL - sale.ENGANCHE === sale.SALDO_REST;
   }, [sale.PRECIO_TOTAL, sale.ENGANCHE, sale.SALDO_REST]);
-
-  const {productos, loading} = useGetProductosByFolio(sale.FOLIO);
 
   return (
     <TouchableOpacity
@@ -71,7 +69,7 @@ const SaleItem = ({
                 fontSize: 20,
                 fontWeight: 'bold',
               }}>
-              {sale.DIA_COBRANZA.substring(0, 2)}
+              {sale?.DIA_COBRANZA.substring(0, 2)}
             </Text>
           </View>
         </View>
@@ -103,9 +101,9 @@ const SaleItem = ({
           </Text>
           <Text
             ellipsizeMode="tail"
-            numberOfLines={2}
+            numberOfLines={1}
             style={saleItemStyles.address}>
-            {productos.map(producto => producto.ARTICULO).join(', ')}
+            {sale.PRODUCTOS.map(producto => producto.ARTICULO).join(', ')}
           </Text>
         </View>
       </View>

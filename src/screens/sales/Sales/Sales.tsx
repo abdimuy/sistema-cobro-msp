@@ -12,8 +12,6 @@ import FocusAwareStatusBar from '../../../components/common/FocusAwareStatusBar/
 import {PRIMARY_COLOR, TEXT_COLOR_TERTIARY} from '../../../contants/colors';
 import SaleItem from '../../../components/modules/sales/SaleItem/SaleItem';
 import salesStyles from './sales.styles';
-import {BottomSheetModal} from '@gorhom/bottom-sheet';
-import {Sale} from './sales.types';
 import {search} from '../../../utils/search/search';
 import {AuthContext} from '../../../../App';
 import {StackNavigationProp} from '@react-navigation/stack';
@@ -21,6 +19,9 @@ import {SalesStackParamList} from '../../../routes/SalesRoutes';
 import {useNavigation} from '@react-navigation/native';
 import {TabView, SceneMap, TabBar} from 'react-native-tab-view';
 import useGetZonaCliente from '../../../hooks/useGetZonaCliente';
+import getSalesLocal from '../../../services/getSalesLocal';
+import {SaleServer} from '../../home/Home';
+import {SaleWithProductos} from '../../../services/getSaleLocal';
 
 type SalesScreenNavigationProp = StackNavigationProp<
   SalesStackParamList,
@@ -28,24 +29,39 @@ type SalesScreenNavigationProp = StackNavigationProp<
 >;
 
 const Sales = () => {
-  const {
-    sales,
-    salesLoading: loading,
-    userData,
-  } = React.useContext(AuthContext);
+  const {userData} = React.useContext(AuthContext);
   const navigation = useNavigation<SalesScreenNavigationProp>();
   const {zonaCliente} = useGetZonaCliente(userData.ZONA_CLIENTE_ID);
   const [searchText, setSearchText] = useState<string>('');
+  const [sales, setSales] = useState<SaleWithProductos[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const [filteredSales, setFilteredSales] = useState<Sale[]>(sales);
+  const [filteredSales, setFilteredSales] =
+    useState<SaleWithProductos[]>(sales);
 
-  const handleSnapPress = useCallback((sale: Sale) => {
-    navigation.navigate('SaleDetails', {saleId: sale.ID});
+  const handleSnapPress = useCallback((sale: SaleWithProductos) => {
+    navigation.navigate('SaleDetails', {saleId: sale.DOCTO_CC_ID});
   }, []);
 
-  const renderItem: ListRenderItem<Sale> = ({item, index}) => (
-    <SaleItem sale={item} key={item.ID} onPress={() => handleSnapPress(item)} />
+  const renderItem: ListRenderItem<SaleWithProductos> = ({item, index}) => (
+    <SaleItem
+      sale={item}
+      key={item.DOCTO_CC_ID}
+      onPress={() => handleSnapPress(item)}
+    />
   );
+
+  useEffect(() => {
+    getSalesLocal()
+      .then(sales => {
+        setSales(sales);
+        setLoading(false);
+      })
+      .catch(err => {
+        console.log(err);
+        setLoading(false);
+      });
+  }, []);
 
   useEffect(() => {
     if (!searchText) {
@@ -83,7 +99,7 @@ const Sales = () => {
           style={salesStyles.list}
           data={filteredSales}
           renderItem={renderItem}
-          keyExtractor={(item: Sale) => item.ID}
+          keyExtractor={(item: SaleServer) => item.DOCTO_CC_ID.toString()}
           getItemCount={() => filteredSales.length}
           ItemSeparatorComponent={() => (
             <View style={{height: 14, backgroundColor: 'transparent'}} />

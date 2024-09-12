@@ -211,6 +211,7 @@ function RootNav() {
           screenOptions={{
             drawerType: 'slide',
             headerShown: false,
+            unmountOnBlur: true,
           }}>
           <Drawer.Screen
             name="Home"
@@ -290,7 +291,6 @@ const App = () => {
       tx.executeSql(
         `CREATE TABLE IF NOT EXISTS pagos
             (
-                ID TEXT PRIMARY KEY,
                 CLIENTE_ID INT,
                 NOMBRE_CLIENTE TEXT,
                 COBRADOR TEXT,
@@ -309,14 +309,70 @@ const App = () => {
       );
     });
 
+    await db.transaction(tx => {
+      tx.executeSql(
+        `CREATE TABLE IF NOT EXISTS ventas (
+          DOCTO_CC_ACR_ID INTEGER,
+          DOCTO_CC_ID INTEGER,
+          FOLIO TEXT,
+          CLIENTE_ID INTEGER,
+          APLICADO TEXT,
+          COBRADOR_ID INTEGER,
+          CLIENTE TEXT,
+          ZONA_CLIENTE_ID INTEGER,
+          LIMITE_CREDITO REAL,
+          NOTAS TEXT,
+          ZONA_NOMBRE TEXT,
+          IMPORTE_PAGO_PROMEDIO REAL,
+          TOTAL_IMPORTE REAL,
+          NUM_IMPORTES INTEGER,
+          FECHA TEXT,  -- Formato ISO 8601 (YYYY-MM-DD HH:MM:SS)
+          PARCIALIDAD REAL,
+          ENGANCHE REAL,
+          TIEMPO_A_CORTO_PLAZOMESES INTEGER,
+          MONTO_A_CORTO_PLAZO REAL,
+          VENDEDOR_1 TEXT,
+          VENDEDOR_2 TEXT,
+          VENDEDOR_3 TEXT,
+          PRECIO_TOTAL REAL,
+          IMPTE_REST REAL,
+          SALDO_REST REAL,
+          FECHA_ULT_PAGO TEXT,  -- Formato ISO 8601 (YYYY-MM-DD HH:MM:SS)
+          CALLE TEXT,
+          CIUDAD TEXT,
+          ESTADO TEXT,
+          TELEFONO TEXT,
+          NOMBRE_COBRADOR TEXT,
+          ESTADO_COBRANZA TEXT,
+          DIA_COBRANZA TEXT,
+          DIA_TEMPORAL_COBRANZA TEXT
+        );`,
+      );
+    });
+
+    await db.transaction(tx => {
+      tx.executeSql(
+        `CREATE TABLE IF NOT EXISTS productos (
+          ARTICULO TEXT,
+          ARTICULO_ID INTEGER,
+          CANTIDAD INTEGER,
+          DOCTO_PV_DET_ID INTEGER,
+          DOCTO_PV_ID INTEGER,
+          FOLIO TEXT,
+          POSICION INTEGER,
+          PRECIO_TOTAL_NETO REAL,
+          PRECIO_UNITARIO_IMPTO REAL
+        );`,
+      );
+    });
+
     return db;
   };
 
   useEffect(() => {
-    async function GetPagosLocal() {
-      await initDb();
-    }
-    GetPagosLocal();
+    initDb().catch(err => {
+      console.log(err);
+    });
 
     const subscription = manager.onStateChange(state => {
       if (state === 'PoweredOn') {
@@ -377,15 +433,15 @@ const App = () => {
     );
   }
 
-  if (!gpsEnabled) {
-    return (
-      <View style={{flex: 1, justifyContent: 'center', alignItems: 'center'}}>
-        <Text style={{fontSize: 20, textAlign: 'center'}}>
-          Esta aplicación requiere GPS. Por favor actívalo.
-        </Text>
-      </View>
-    );
-  }
+  // if (!gpsEnabled) {
+  //   return (
+  //     <View style={{flex: 1, justifyContent: 'center', alignItems: 'center'}}>
+  //       <Text style={{fontSize: 20, textAlign: 'center'}}>
+  //         Esta aplicación requiere GPS. Por favor actívalo.
+  //       </Text>
+  //     </View>
+  //   );
+  // }
 
   return (
     <AuthProvider>

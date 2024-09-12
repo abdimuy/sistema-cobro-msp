@@ -6,8 +6,8 @@ import Payment from '../components/modules/payments/Payment/Payment';
 
 export type SalesStackParamList = {
   Sales: undefined;
-  SaleDetails: {saleId: string};
-  Payment: {paymentId: string; saleId: string};
+  SaleDetails: {saleId: number};
+  Payment: {paymentId: number; saleId: number};
 };
 
 const SalesStack = createStackNavigator<SalesStackParamList>();

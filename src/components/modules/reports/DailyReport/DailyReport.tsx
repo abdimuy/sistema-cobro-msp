@@ -1,31 +1,21 @@
 import {View, Text, StyleSheet, Pressable, ScrollView} from 'react-native';
 import React, {useContext, useEffect, useState} from 'react';
 import {
-  Timestamp,
-  collection,
-  onSnapshot,
-  query,
-  where,
-} from '@react-native-firebase/firestore';
-import {PAGOS_COLLECTION} from '../../../../constants/collections';
-import {
   PAGO_CON_TRANSFERENCIA_ID,
   PAGO_EN_EFECTIVO_ID,
-  Payment,
 } from '../../sales/SaleDetails/SaleDetails';
-import {db} from '../../../../firebase/connection';
 import dayjs from 'dayjs';
 import {AuthContext} from '../../../../../App';
 import usePrinter from '../../../../hooks/usePrinter';
 import {Picker} from '@react-native-picker/picker';
-import useSales from '../../../../screens/sales/Sales/useSales';
 import {NEGRITAS_OFF, NEGRITAS_ON} from '../../../../contants/printerCommans';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import {openDatabase} from '../../../../sqlite/connection';
+import {PagoServer} from '../../../../screens/home/Home';
 
 const DailyReport = () => {
   const {userData} = useContext(AuthContext);
-  const [pagos, setPagos] = useState<Payment[]>([]);
-  const {sales} = useSales(userData.ZONA_CLIENTE_ID);
+  const [pagos, setPagos] = useState<PagoServer[]>([]);
   const [date, setDate] = useState<Date>(dayjs().toDate());
   const [showDatePicker, setShowDatePicker] = useState<boolean>(false);
 
@@ -39,31 +29,43 @@ const DailyReport = () => {
     getListDevices,
   } = usePrinter();
 
+  const getPagosDiarios = async () => {
+    const dateQ = dayjs(date).startOf('day');
+    const startOfDay = dateQ.toISOString();
+    const endOfDay = dateQ.endOf('day').toISOString();
+
+    console.log(startOfDay);
+    console.log(endOfDay);
+
+    const query = `
+      SELECT *
+      FROM pagos
+      WHERE FECHA_HORA_PAGO BETWEEN '${startOfDay}' AND '${endOfDay}'
+      AND FORMA_COBRO_ID IN (157, 158, 52569)
+      ORDER BY FECHA_HORA_PAGO DESC;
+    `;
+
+    const db = await openDatabase();
+    const [result] = await db.executeSql(query);
+    const pagos = result.rows.raw();
+
+    setPagos(pagos);
+    return pagos;
+  };
+
   useEffect(() => {
     getListDevices();
-    const dateQ = dayjs(date).startOf('day');
-
-    const q = query(
-      collection(db, PAGOS_COLLECTION),
-      where('ZONA_CLIENTE_ID', '==', userData.ZONA_CLIENTE_ID),
-      where('FECHA_HORA_PAGO', '>=', Timestamp.fromDate(dateQ.toDate())),
-      where(
-        'FECHA_HORA_PAGO',
-        '<=',
-        Timestamp.fromDate(dayjs(date).endOf('day').toDate()),
-      ),
-      where('FORMA_COBRO_ID', 'in', [157, 158, 52569]),
-    );
-    const unsubscribe = onSnapshot(q, snapshot => {
-      if (!snapshot) return;
-      setPagos(
-        snapshot.docs.map(doc => ({...doc.data(), ID: doc.id})) as Payment[],
-      );
-    });
-
-    return () => {
-      unsubscribe();
-    };
+    console.log('Cambio de fecha');
+    getPagosDiarios()
+      .then(res =>
+        res.map(pago =>
+          console.log({
+            CLIENTE: pago.NOMBRE_CLIENTE,
+            FECHA: dayjs(pago.FECHA_HORA_PAGO).toISOString(),
+          }),
+        ),
+      )
+      .catch(err => console.log(err));
   }, [date]);
 
   const total = pagos.reduce((acc, pago) => {
@@ -90,7 +92,7 @@ ${pagos
       pago.FORMA_COBRO_ID === PAGO_CON_TRANSFERENCIA_ID,
   )
   .map(pago => {
-    return `${dayjs(pago.FECHA_HORA_PAGO.toDate()).format(
+    return `${dayjs(pago.FECHA_HORA_PAGO).format(
       'HH:mm',
     )} ${pago?.NOMBRE_CLIENTE?.slice(0, 20)} $ ${pago.IMPORTE}
 `;
@@ -137,10 +139,10 @@ Total de pagos: ${
       )}
       <ScrollView style={styles.list}>
         {pagos.map(pago => (
-          <View key={pago.ID} style={styles.item}>
+          <View key={pago.DOCTO_CC_ID} style={styles.item}>
             <View style={{maxWidth: '90%'}}>
               <Text style={styles.itemSubtitle}>
-                {dayjs(pago.FECHA_HORA_PAGO.toDate()).format('hh:mm A')}
+                {dayjs(pago.FECHA_HORA_PAGO).format('hh:mm A')}
               </Text>
               <Text style={styles.itemTitle}>{pago.NOMBRE_CLIENTE}</Text>
             </View>
