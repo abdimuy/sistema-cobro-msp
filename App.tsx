@@ -1,9 +1,14 @@
-import React, {useEffect, useState} from 'react';
+import React, {useContext, useEffect, useState} from 'react';
 import 'react-native-gesture-handler';
 import {NavigationContainer} from '@react-navigation/native';
 
-import {createDrawerNavigator} from '@react-navigation/drawer';
-import Home from './src/screens/home/Home';
+import {
+  createDrawerNavigator,
+  DrawerContentComponentProps,
+  DrawerContentScrollView,
+  DrawerItem,
+} from '@react-navigation/drawer';
+import Home, {SaleServer} from './src/screens/home/Home';
 import DailyReport from './src/components/modules/reports/DailyReport/DailyReport';
 import WeeklyReport from './src/components/modules/reports/WeeklyReport/WeeklyReport';
 import LoginScreen from './src/screens/auth/login';
@@ -12,22 +17,37 @@ import {User as UserFB} from 'firebase/auth';
 import {auth} from './src/firebase/connection';
 import {User} from './src/screens/auth/getUser';
 import useGetUser from './src/screens/auth/useGetUser';
-import SalesNavigator from './src/routes/SalesRoutes';
-import {Sale} from './src/screens/sales/Sales/sales.types';
+import SalesNavigator, {SalesStackParamList} from './src/routes/SalesRoutes';
 import useSales from './src/screens/sales/Sales/useSales';
 import firestore, {Timestamp} from '@react-native-firebase/firestore';
 import {BleManager} from 'react-native-ble-plx';
-import {Alert, Linking, Platform, Text} from 'react-native';
+import {
+  Alert,
+  AppState,
+  AppStateStatus,
+  Linking,
+  Platform,
+  Pressable,
+  Text,
+} from 'react-native';
 import Geolocation from '@react-native-community/geolocation';
 import {check, PERMISSIONS, request, RESULTS} from 'react-native-permissions';
 import {openDatabase} from './src/sqlite/connection';
+import RouteMap from './src/screens/routeMap/RouteMap';
+import sendPagosNotSent from './src/services/sendPagosNotSent';
+import dayjs from 'dayjs';
+import * as Keychain from 'react-native-keychain';
 
 export type RootDrawerParamList = {
   Home: undefined;
-  Sales: undefined;
+  Sales: {
+    screen: keyof SalesStackParamList;
+    params: SalesStackParamList['SaleDetails'];
+  };
   dailyReport: undefined;
   weeklyReport: undefined;
   Login: undefined;
+  RouteMap: undefined;
 };
 
 const Drawer = createDrawerNavigator<RootDrawerParamList>();
@@ -37,17 +57,8 @@ export const AuthContext = React.createContext<{
   setUser: React.Dispatch<React.SetStateAction<any>>;
   userData: User;
   setUserData: React.Dispatch<React.SetStateAction<User>>;
-  sales: Sale[];
+  sales: SaleServer[];
   salesLoading: boolean;
-  salesByDay: {
-    domingo: Sale[];
-    lunes: Sale[];
-    martes: Sale[];
-    miercoles: Sale[];
-    jueves: Sale[];
-    viernes: Sale[];
-    sabado: Sale[];
-  };
 }>({
   user: null,
   setUser: () => {},
@@ -66,26 +77,7 @@ export const AuthContext = React.createContext<{
   },
   sales: [],
   salesLoading: true,
-  salesByDay: {
-    domingo: [],
-    lunes: [],
-    martes: [],
-    miercoles: [],
-    jueves: [],
-    viernes: [],
-    sabado: [],
-  },
 });
-
-export interface SaleByDay {
-  domingo: Sale[];
-  lunes: Sale[];
-  martes: Sale[];
-  miercoles: Sale[];
-  jueves: Sale[];
-  viernes: Sale[];
-  sabado: Sale[];
-}
 
 const AuthProvider = ({children}: {children: React.ReactNode}) => {
   const [user, setUser] = React.useState<UserFB | null>(null);
@@ -100,54 +92,6 @@ const AuthProvider = ({children}: {children: React.ReactNode}) => {
     ZONA_CLIENTE_ID: 0,
   });
   const {sales, loading} = useSales(userData.ZONA_CLIENTE_ID);
-  const [salesByDay, setSalesByDay] = React.useState<SaleByDay>({
-    domingo: [],
-    lunes: [],
-    martes: [],
-    miercoles: [],
-    jueves: [],
-    viernes: [],
-    sabado: [],
-  });
-
-  useEffect(() => {
-    if (loading) {
-      return;
-    }
-    const salesByDay = sales.reduce(
-      (acc: SaleByDay, sale: Sale) => {
-        const day = new Date(sale.FECHA.toDate()).getDay();
-        switch (day) {
-          case 0:
-            return {...acc, domingo: [...acc.domingo, sale]};
-          case 1:
-            return {...acc, lunes: [...acc.lunes, sale]};
-          case 2:
-            return {...acc, martes: [...acc.martes, sale]};
-          case 3:
-            return {...acc, miercoles: [...acc.miercoles, sale]};
-          case 4:
-            return {...acc, jueves: [...acc.jueves, sale]};
-          case 5:
-            return {...acc, viernes: [...acc.viernes, sale]};
-          case 6:
-            return {...acc, sabado: [...acc.sabado, sale]};
-          default:
-            return acc;
-        }
-      },
-      {
-        domingo: [],
-        lunes: [],
-        martes: [],
-        miercoles: [],
-        jueves: [],
-        viernes: [],
-        sabado: [],
-      },
-    );
-    setSalesByDay(salesByDay);
-  }, [sales, loading]);
 
   return (
     <AuthContext.Provider
@@ -158,7 +102,6 @@ const AuthProvider = ({children}: {children: React.ReactNode}) => {
         setUserData,
         sales,
         salesLoading: loading,
-        salesByDay,
       }}>
       {children}
     </AuthContext.Provider>
@@ -166,8 +109,62 @@ const AuthProvider = ({children}: {children: React.ReactNode}) => {
 };
 
 function RootNav() {
-  const {user, setUser, setUserData} = React.useContext(AuthContext);
-  const [loading, setLoading] = React.useState(true);
+  const {user, setUser, setUserData} = useContext(AuthContext);
+  const [loading, setLoading] = useState(true);
+  // const [isAuthenticated, setIsAuthenticated] = useState(false);
+
+  // const authenticateUser = async () => {
+  //   try {
+  //     console.log('Iniciando Autenticación');
+  //     // Almacenar credenciales ficticias con control de acceso biométrico o cualquier método de seguridad
+  //     await Keychain.setGenericPassword('user', 'password', {
+  //       accessControl: Keychain.ACCESS_CONTROL.BIOMETRY_ANY_OR_DEVICE_PASSCODE, // Cambia a BIOMETRY_ANY para forzar la autenticación
+  //       accessible: Keychain.ACCESSIBLE.WHEN_UNLOCKED,
+  //     });
+
+  //     // Intenta recuperar las credenciales para activar la autenticación
+  //     const credentials = await Keychain.getGenericPassword({
+  //       authenticationPrompt: {
+  //         title: 'Autenticación requerida',
+  //         subtitle: 'Ingrese su patrón, PIN o contraseña para continuar',
+  //         description: 'Esta acción requiere autenticación',
+  //         cancel: 'Cancelar',
+  //       },
+  //     });
+
+  //     if (credentials) {
+  //       setIsAuthenticated(true);
+  //     } else {
+  //       setIsAuthenticated(false);
+  //     }
+  //   } catch (error) {
+  //     console.error('Error de autenticación:', error);
+  //     await Keychain.resetGenericPassword();
+  //     setIsAuthenticated(false);
+  //   }
+  // };
+
+  // useEffect(() => {
+  //   const handleAppStateChange = async (nextAppState: AppStateStatus) => {
+  //     if (nextAppState === 'active') {
+  //       await authenticateUser();
+  //     }
+  //   };
+
+  //   // Llama a la autenticación inicial al cargar la app
+  //   authenticateUser();
+
+  //   // Agrega el listener de AppState
+  //   const subscription = AppState.addEventListener(
+  //     'change',
+  //     handleAppStateChange,
+  //   );
+
+  //   // Limpia el listener cuando el componente se desmonta
+  //   return () => {
+  //     subscription.remove();
+  //   };
+  // }, []);
 
   useEffect(() => {
     const unsubscribe = auth().onAuthStateChanged(authUser => {
@@ -183,6 +180,42 @@ function RootNav() {
       unsubscribe();
     };
   }, [user]);
+
+  useEffect(() => {
+    const asyncFunc = () => {
+      sendPagosNotSent(
+        false,
+        dayjs(userData?.FECHA_CARGA_INICIAL.toDate()),
+        false,
+      ).catch(err => {
+        console.log(err);
+      });
+    };
+    asyncFunc();
+    const intervalId = setInterval(asyncFunc, 15 * 60 * 1000);
+
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, []);
+
+  // useEffect(() => {
+  //   const asyncFunc = () => {
+  //     sendPagosNotSent(
+  //       true,
+  //       dayjs(userData?.FECHA_CARGA_INICIAL.toDate()),
+  //       false,
+  //     ).catch(err => {
+  //       console.log(err);
+  //     });
+  //   };
+  //   asyncFunc();
+  //   const intervalId = setInterval(asyncFunc, 30 * 60 * 1000);
+
+  //   return () => {
+  //     clearInterval(intervalId);
+  //   };
+  // }, []);
 
   const {user: userData, loading: loadingUserData} = useGetUser(
     user?.email as string,
@@ -204,10 +237,30 @@ function RootNav() {
     );
   }
 
+  // if (!isAuthenticated) {
+  //   return (
+  //     <View
+  //       style={{
+  //         flex: 1,
+  //         justifyContent: 'center',
+  //         alignItems: 'center',
+  //         backgroundColor: 'white',
+  //       }}>
+  //       <Text style={{color: 'Black', fontSize: 20}}>
+  //         Autenticación requerida
+  //       </Text>
+  //       <Pressable onPress={authenticateUser}>
+  //         <Text>Entrar</Text>
+  //       </Pressable>
+  //     </View>
+  //   );
+  // }
+
   return (
     <NavigationContainer>
       {user ? (
         <Drawer.Navigator
+          drawerContent={props => <CustomDrawerContent {...props} />}
           screenOptions={{
             drawerType: 'slide',
             headerShown: false,
@@ -241,6 +294,13 @@ function RootNav() {
               drawerLabel: 'Reporte Semanal',
             }}
           />
+          <Drawer.Screen
+            name="RouteMap"
+            component={RouteMap}
+            options={{
+              drawerLabel: 'Mapa de ruta',
+            }}
+          />
         </Drawer.Navigator>
       ) : (
         <LoginScreen />
@@ -249,40 +309,66 @@ function RootNav() {
   );
 }
 
+const CustomDrawerContent = (props: DrawerContentComponentProps) => {
+  return (
+    <DrawerContentScrollView {...props}>
+      <DrawerItem
+        label="Inicio"
+        onPress={() => props.navigation.navigate('Home')}
+      />
+      <DrawerItem
+        label="Clientes"
+        onPress={() => props.navigation.navigate('Sales')}
+      />
+      <DrawerItem
+        label="Reporte Diario"
+        onPress={() => props.navigation.navigate('dailyReport')}
+      />
+      <DrawerItem
+        label="Reporte Semanal"
+        onPress={() => props.navigation.navigate('weeklyReport')}
+      />
+      <DrawerItem
+        label="Mapa de ruta"
+        onPress={() => props.navigation.navigate('RouteMap')}
+      />
+    </DrawerContentScrollView>
+  );
+};
+
+export const requestLocationPermission = async () => {
+  const permission =
+    Platform.OS === 'ios'
+      ? PERMISSIONS.IOS.LOCATION_WHEN_IN_USE
+      : PERMISSIONS.ANDROID.ACCESS_FINE_LOCATION;
+
+  const result = await check(permission);
+
+  if (result === RESULTS.GRANTED) {
+    return true;
+  } else if (result === RESULTS.DENIED) {
+    const newResult = await request(permission);
+    return newResult === RESULTS.GRANTED;
+  } else if (result === RESULTS.BLOCKED) {
+    Alert.alert(
+      'Permiso de GPS Denegado',
+      'Por favor, habilita el permiso de GPS desde la configuración.',
+      [
+        {
+          text: 'Abrir Configuración',
+          onPress: () => Linking.openSettings(),
+        },
+      ],
+      {cancelable: false},
+    );
+    return false;
+  }
+  return false;
+};
+
 const App = () => {
   const manager = new BleManager();
   const [bluetoothEnabled, setBluetoothEnabled] = useState(false);
-  const [gpsEnabled, setGpsEnabled] = useState(false);
-
-  const requestLocationPermission = async () => {
-    const permission =
-      Platform.OS === 'ios'
-        ? PERMISSIONS.IOS.LOCATION_WHEN_IN_USE
-        : PERMISSIONS.ANDROID.ACCESS_FINE_LOCATION;
-
-    const result = await check(permission);
-
-    if (result === RESULTS.GRANTED) {
-      return true;
-    } else if (result === RESULTS.DENIED) {
-      const newResult = await request(permission);
-      return newResult === RESULTS.GRANTED;
-    } else if (result === RESULTS.BLOCKED) {
-      Alert.alert(
-        'Permiso de GPS Denegado',
-        'Por favor, habilita el permiso de GPS desde la configuración.',
-        [
-          {
-            text: 'Abrir Configuración',
-            onPress: () => Linking.openSettings(),
-          },
-        ],
-        {cancelable: false},
-      );
-      return false;
-    }
-    return false;
-  };
 
   const initDb = async () => {
     const db = await openDatabase();
@@ -291,6 +377,7 @@ const App = () => {
       tx.executeSql(
         `CREATE TABLE IF NOT EXISTS pagos
             (
+                ID TEXT PRIMARY KEY,
                 CLIENTE_ID INT,
                 NOMBRE_CLIENTE TEXT,
                 COBRADOR TEXT,
@@ -306,7 +393,9 @@ const App = () => {
                 GUARDADO_EN_MICROSIP INT
             )
         `,
-      );
+      ).then(response => {
+        console.log('Response', response);
+      });
     });
 
     await db.transaction(tx => {
@@ -345,9 +434,14 @@ const App = () => {
           NOMBRE_COBRADOR TEXT,
           ESTADO_COBRANZA TEXT,
           DIA_COBRANZA TEXT,
-          DIA_TEMPORAL_COBRANZA TEXT
+          DIA_TEMPORAL_COBRANZA TEXT,
+          AVAL_O_RESPONSABLE TEXT,
+          PRECIO_DE_CONTADO REAL,
+          FREC_PAGO TEXT
         );`,
-      );
+      ).then(response => {
+        console.log('Response', response);
+      });
     });
 
     await db.transaction(tx => {
@@ -362,6 +456,26 @@ const App = () => {
           POSICION INTEGER,
           PRECIO_TOTAL_NETO REAL,
           PRECIO_UNITARIO_IMPTO REAL
+        );`,
+      );
+    });
+
+    await db.transaction(tx => {
+      tx.executeSql(
+        `
+          CREATE TABLE IF NOT EXISTS visitas (
+            ID                   TEXT NOT NULL,
+            CLIENTE_ID           INTEGER NOT NULL,
+            COBRADOR             TEXT NOT NULL DEFAULT '',
+            COBRADOR_ID          INTEGER NOT NULL,
+            FECHA                TEXT NOT NULL,
+            FORMA_COBRO_ID       INTEGER NOT NULL,
+            LAT                  REAL NOT NULL,
+            LNG                  REAL NOT NULL,
+            NOTA                 TEXT,
+            TIPO_VISITA          TEXT NOT NULL,
+            ZONA_CLIENTE_ID      INTEGER NOT NULL,
+            IMPTE_DOCTO_CC_ID    INTERGER
         );`,
       );
     });
@@ -382,31 +496,7 @@ const App = () => {
       }
     }, true);
 
-    const checkAndRequestGPS = async () => {
-      const hasLocationPermission = await requestLocationPermission();
-      if (hasLocationPermission) {
-        Geolocation.getCurrentPosition(
-          position => {
-            setGpsEnabled(true);
-          },
-          error => {
-            if (error.code === 2) {
-              // GPS deshabilitado
-              setGpsEnabled(false);
-              // showGPSAlert();
-            }
-          },
-          {enableHighAccuracy: true, timeout: 15000, maximumAge: 10000},
-        );
-      }
-    };
-
-    const intervalId = setInterval(() => {
-      checkAndRequestGPS();
-    }, 5000); // Verificar cada 5 segundos
-
     return () => {
-      clearInterval(intervalId);
       subscription.remove();
     };
   }, []);

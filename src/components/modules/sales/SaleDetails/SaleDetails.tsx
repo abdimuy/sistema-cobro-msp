@@ -10,6 +10,7 @@ import {
   PermissionsAndroid,
   ScrollView,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import React, {useContext, useEffect, useMemo, useRef, useState} from 'react';
 import saleDetailsStyles from './saleDetails.style';
@@ -19,13 +20,6 @@ import MapView, {Marker} from 'react-native-maps';
 import dayjs from 'dayjs';
 import Geolocation from '@react-native-community/geolocation';
 import RNPickerSelect from 'react-native-picker-select';
-import {
-  Timestamp,
-  collection,
-  doc,
-  writeBatch,
-} from '@react-native-firebase/firestore';
-import {db} from '../../../../firebase/connection';
 import {AuthContext} from '../../../../../App';
 import useGetSale from '../../../../hooks/useGetSale';
 import {SalesStackParamList} from '../../../../routes/SalesRoutes';
@@ -36,6 +30,8 @@ import {openDatabase} from '../../../../sqlite/connection';
 import {PagoServer} from '../../../../screens/home/Home';
 import api from '../../../../services/api';
 import sendPago from '../../../../services/sendPago';
+import sendVisita, {VisitaLocal} from '../../../../services/sendVisita';
+import uuid from 'react-native-uuid';
 
 export interface Producto {
   ARTICULO: string;
@@ -59,6 +55,11 @@ const NO_SE_ENCONTRABA = 'No se encontraba';
 const NO_VA_A_DAR_PAGO = 'No va a dar pago';
 const SE_ESCONDE_Y_NO_SALE = 'Se esconde y no sale';
 
+export type VisitaType =
+  | typeof NO_SE_ENCONTRABA
+  | typeof NO_VA_A_DAR_PAGO
+  | typeof SE_ESCONDE_Y_NO_SALE;
+
 export const PAGO_EN_EFECTIVO_ID = 157;
 export const PAGO_CON_TRANSFERENCIA_ID = 52569;
 export const CONDONACION_ID = 137026;
@@ -80,7 +81,8 @@ const SaleDetails = () => {
     useState<boolean>(false);
   const [payment, setPayment] = useState<number>(0);
   const [notaVisita, setNotaVisita] = useState<string>('');
-  const [selectedNotaVisita, setSelectedNotaVisita] = useState<string>('');
+  const [selectedNotaVisita, setSelectedNotaVisita] =
+    useState<VisitaType>(NO_SE_ENCONTRABA);
   const [selectedFormaCobro, setSelectedFormaCobro] =
     useState<number>(PAGO_EN_EFECTIVO_ID);
   const [alertPayment, setAlertPayment] = useState<string>('');
@@ -106,6 +108,20 @@ const SaleDetails = () => {
 
   const handleOpenMap = () => {
     setModalMapVisible(true);
+  };
+
+  const openCalendar = () => {
+    const url = 'content://com.android.calendar/time/'; // Para Android
+    Linking.openURL(url).catch(err =>
+      console.error('No se puede abrir el calendario', err),
+    );
+  };
+
+  const openCalculator = () => {
+    const url = 'content://com.android.calculator2/';
+    Linking.openURL(url).catch(err =>
+      console.error('No se puede abrir el calendario', err),
+    );
   };
 
   const requestLocationPermission = async () => {
@@ -159,39 +175,51 @@ const SaleDetails = () => {
     });
     if (payment <= 0) return setAlertPayment('EL PAGO DEBE SER MAYOR A 0');
     requestLocationPermission().then(() => {
-      Geolocation.getCurrentPosition(async info => {
-        const id = generateIdUnique();
-        const lat = info.coords.latitude;
-        const lng = info.coords.longitude;
+      Geolocation.getCurrentPosition(
+        async info => {
+          const id = uuid.v4().toString();
+          const lat = info.coords.latitude;
+          const lng = info.coords.longitude;
 
-        const data: PaymentDto = {
-          CLIENTE_ID: sale.CLIENTE_ID,
-          NOMBRE_CLIENTE: sale.CLIENTE,
-          FECHA_HORA_PAGO: dayjs().toISOString(),
-          COBRADOR: sale.NOMBRE_COBRADOR,
-          COBRADOR_ID: userData.COBRADOR_ID,
-          LAT: lat,
-          LNG: lng,
-          IMPORTE: payment,
-          DOCTO_CC_ID: id,
-          DOCTO_CC_ACR_ID: sale.DOCTO_CC_ACR_ID,
-          FORMA_COBRO_ID: selectedFormaCobro,
-          ZONA_CLIENTE_ID: sale.ZONA_CLIENTE_ID,
-          GUARDADO_EN_MICROSIP: false,
-        };
+          const data: PaymentDto = {
+            ID: id,
+            CLIENTE_ID: sale.CLIENTE_ID,
+            NOMBRE_CLIENTE: sale.CLIENTE,
+            FECHA_HORA_PAGO: dayjs().toISOString(),
+            COBRADOR: sale.NOMBRE_COBRADOR,
+            COBRADOR_ID: userData.COBRADOR_ID,
+            LAT: lat,
+            LNG: lng,
+            IMPORTE: payment,
+            DOCTO_CC_ID: 0,
+            DOCTO_CC_ACR_ID: sale.DOCTO_CC_ACR_ID,
+            FORMA_COBRO_ID: selectedFormaCobro,
+            ZONA_CLIENTE_ID: sale.ZONA_CLIENTE_ID,
+            GUARDADO_EN_MICROSIP: false,
+          };
 
-        try {
-          await sendPago(data);
-          setModalVisible(false);
-        } catch (e) {
-          console.error('Error adding document: ', e);
-        }
+          try {
+            await sendPago(data);
+            setModalVisible(false);
+          } catch (e) {
+            console.error('Error adding document: ', e);
+          }
 
-        getSaleAgain();
-        goToPayment(id);
-        setModalVisible(!modalVisible);
-        setLoadingSave(false);
-      });
+          getSaleAgain();
+          goToPayment(id);
+          setModalVisible(!modalVisible);
+          setLoadingSave(false);
+        },
+        err => {
+          Alert.alert(
+            'Error al obtener la ubicación',
+            'No se ha podido obtener la ubicación actual, por lo que el PAGO NO SE HA GUARDADO',
+          );
+          console.log('Error al obtener la ubicación:', err);
+          setLoadingSave(false);
+        },
+        {enableHighAccuracy: true, timeout: 15000, maximumAge: 20000},
+      );
     });
   };
 
@@ -202,31 +230,46 @@ const SaleDetails = () => {
       return true;
     });
     requestLocationPermission().then(() => {
-      Geolocation.getCurrentPosition(info => {
-        const lat = info.coords.latitude;
-        const lng = info.coords.longitude;
-        const data = {
-          CLIENTE_ID: sale.CLIENTE_ID,
-          FECHA_HORA_VISITA: Timestamp.fromDate(dayjs().toDate()),
-          COBRADOR: sale.NOMBRE_COBRADOR,
-          COBRADOR_ID: userData.COBRADOR_ID,
-          LAT: lat,
-          LNG: lng,
-          NOTA: notaVisita,
-          TIPO_VISITA: selectedNotaVisita,
-          FORMA_COBRO_ID: selectedFormaCobro,
-          ZONA_CLIENTE_ID: sale.ZONA_CLIENTE_ID,
-        };
-        try {
-          const batch = writeBatch(db);
-          batch.set(doc(collection(db, 'visitas')), data);
-          batch.commit();
-          setModalVisitaVisible(false);
-        } catch (e) {
-          console.error('Error adding document: ', e);
-        }
-        setModalVisitaVisible(!modalVisitaVisible);
-      });
+      Geolocation.getCurrentPosition(
+        async info => {
+          const lat = info.coords.latitude;
+          const lng = info.coords.longitude;
+          const data: VisitaLocal = {
+            CLIENTE_ID: sale.CLIENTE_ID,
+            FECHA: dayjs().format('YYYY-MM-DD HH:mm:ss'),
+            COBRADOR: sale.NOMBRE_COBRADOR,
+            COBRADOR_ID: userData.COBRADOR_ID,
+            LAT: lat,
+            LNG: lng,
+            NOTA: notaVisita,
+            TIPO_VISITA: selectedNotaVisita,
+            FORMA_COBRO_ID: selectedFormaCobro,
+            ZONA_CLIENTE_ID: sale.ZONA_CLIENTE_ID,
+            ID: uuid.v4().toString(),
+            IMPTE_DOCTO_CC_ID: sale.DOCTO_CC_ACR_ID,
+          };
+          try {
+            await sendVisita(
+              data,
+              true,
+              selectedNotaVisita,
+              sale.DOCTO_CC_ACR_ID,
+            );
+            setModalVisitaVisible(false);
+          } catch (e) {
+            console.error('Error adding document: ', e);
+          }
+          setModalVisitaVisible(!modalVisitaVisible);
+        },
+        err => {
+          Alert.alert(
+            'Error al obtener la ubicación',
+            'No se ha podido obtener la ubicación actual, por lo que la visita NO SE HA GUARDADO',
+          );
+          console.log('Error al obtener la ubicación:', err);
+        },
+        {enableHighAccuracy: true, timeout: 15000, maximumAge: 20000},
+      );
     });
     setLoadingSave(false);
   };
@@ -243,31 +286,34 @@ const SaleDetails = () => {
       return true;
     });
     requestLocationPermission().then(() => {
-      Geolocation.getCurrentPosition(async info => {
-        const lat = info.coords.latitude;
-        const lng = info.coords.longitude;
+      Geolocation.getCurrentPosition(
+        async info => {
+          const lat = info.coords.latitude;
+          const lng = info.coords.longitude;
 
-        const data: PaymentDto = {
-          CLIENTE_ID: sale.CLIENTE_ID,
-          NOMBRE_CLIENTE: sale.CLIENTE,
-          FECHA_HORA_PAGO: dayjs().toISOString(),
-          COBRADOR: sale.NOMBRE_COBRADOR,
-          COBRADOR_ID: userData.COBRADOR_ID,
-          LAT: lat,
-          LNG: lng,
-          IMPORTE: payment,
-          DOCTO_CC_ID: generateIdUnique(),
-          DOCTO_CC_ACR_ID: sale.DOCTO_CC_ACR_ID,
-          FORMA_COBRO_ID: CONDONACION_ID,
-          ZONA_CLIENTE_ID: sale.ZONA_CLIENTE_ID,
-          GUARDADO_EN_MICROSIP: false,
-        };
-        try {
-          const dbSqlite = await openDatabase();
-          const result = dbSqlite.executeSql(
-            `
+          const data: PaymentDto = {
+            ID: uuid.v4().toString(),
+            CLIENTE_ID: sale.CLIENTE_ID,
+            NOMBRE_CLIENTE: sale.CLIENTE,
+            FECHA_HORA_PAGO: dayjs().toISOString(),
+            COBRADOR: sale.NOMBRE_COBRADOR,
+            COBRADOR_ID: userData.COBRADOR_ID,
+            LAT: lat,
+            LNG: lng,
+            IMPORTE: payment,
+            DOCTO_CC_ID: 0,
+            DOCTO_CC_ACR_ID: sale.DOCTO_CC_ACR_ID,
+            FORMA_COBRO_ID: CONDONACION_ID,
+            ZONA_CLIENTE_ID: sale.ZONA_CLIENTE_ID,
+            GUARDADO_EN_MICROSIP: false,
+          };
+          try {
+            const dbSqlite = await openDatabase();
+            const result = dbSqlite.executeSql(
+              `
             INSERT INTO pagos
               (
+                ID,
                 CLIENTE_ID,
                 NOMBRE_CLIENTE,
                 COBRADOR,
@@ -282,6 +328,7 @@ const SaleDetails = () => {
                 LNG,
                 GUARDADO_EN_MICROSIP
               ) VALUES (
+                '${data.ID}',
                 ${data.CLIENTE_ID},
                 '${data.NOMBRE_CLIENTE}',
                 '${data.COBRADOR}',
@@ -297,10 +344,10 @@ const SaleDetails = () => {
                 ${data.GUARDADO_EN_MICROSIP}
                 )
                 `,
-          );
-          console.log('result', result);
+            );
+            console.log('result', result);
 
-          const query = `
+            const query = `
             UPDATE ventas
             SET
               SALDO_REST = SALDO_REST - ${payment},
@@ -308,34 +355,38 @@ const SaleDetails = () => {
             WHERE DOCTO_CC_ID = ${sale.DOCTO_CC_ID}
           `;
 
-          const resultUpdate = dbSqlite.executeSql(query);
-          console.log('resultUpdate', resultUpdate);
+            const resultUpdate = dbSqlite.executeSql(query);
+            console.log('resultUpdate', resultUpdate);
 
-          const response = await api.post<{err: ''; body: string}>(
-            'ventas/add-pago',
-            {pago: data},
-            {
-              timeout: 7000,
-            },
-          );
-          console.log('response', response.data);
+            const response = await api.post<{err: ''; body: string}>(
+              'ventas/add-pago',
+              {pago: data},
+              {
+                timeout: 3000,
+              },
+            );
+            console.log('response', response.data);
 
-          const queryUpdateGuardado = `
+            const queryUpdateGuardado = `
             UPDATE pagos
             SET GUARDADO_EN_MICROSIP = 1
-            WHERE DOCTO_CC_ID = ${data.DOCTO_CC_ACR_ID}
+            WHERE ID = '${data.ID}'
           `;
-          const resultUpdateGuardado = dbSqlite.executeSql(queryUpdateGuardado);
-          console.log('resultUpdateGuardado', resultUpdateGuardado);
+            const resultUpdateGuardado =
+              dbSqlite.executeSql(queryUpdateGuardado);
+            console.log('resultUpdateGuardado', resultUpdateGuardado);
 
-          setModalCondonacionVisible(false);
-        } catch (e) {
-          console.error('Error adding document: ', e);
-        }
-        getSaleAgain();
-        goToPayment(data.DOCTO_CC_ID);
-        setModalCondonacionVisible(!modalCondonacionVisible);
-      });
+            setModalCondonacionVisible(false);
+          } catch (e) {
+            console.error('Error adding document: ', e);
+          }
+          getSaleAgain();
+          goToPayment(data.ID);
+          setModalCondonacionVisible(!modalCondonacionVisible);
+        },
+        err => console.log(err),
+        {enableHighAccuracy: true, timeout: 15000, maximumAge: 20000},
+      );
     });
     setLoadingSave(false);
   };
@@ -348,7 +399,7 @@ const SaleDetails = () => {
   const handleCloseVisitaModal = () => {
     setModalVisitaVisible(!modalVisitaVisible);
     setNotaVisita('');
-    setSelectedNotaVisita('');
+    setSelectedNotaVisita(NO_SE_ENCONTRABA);
     setSelectedFormaCobro(PAGO_EN_EFECTIVO_ID);
   };
 
@@ -370,7 +421,7 @@ const SaleDetails = () => {
     setPayment(parseInt(text));
   };
 
-  const goToPayment = (paymentId: number) => {
+  const goToPayment = (paymentId: string) => {
     navigation.navigate('Payment', {paymentId: paymentId, saleId: saleId});
   };
 
@@ -380,6 +431,15 @@ const SaleDetails = () => {
       new Date(a.FECHA_HORA_PAGO).getTime(),
   );
 
+  const cantsRepeat = useMemo(() => {
+    return sale.pagos.reduce((acc: number[], pago) => {
+      if (!acc.some(cant => cant === pago.IMPORTE)) {
+        acc.push(pago.IMPORTE);
+      }
+      return acc;
+    }, []);
+  }, [sale.pagos]);
+
   useEffect(() => {
     if (sale.pagos.length > 0) {
       const lastPayment = paymentsOrder[0];
@@ -388,7 +448,26 @@ const SaleDetails = () => {
     }
   }, [sale.pagos]);
 
-  // if (loading || productosLoading) {
+  const totalAbonado = sale.PRECIO_TOTAL - sale.SALDO_REST;
+  const tiempoTranscurrido =
+    dayjs().diff(dayjs(sale.FECHA).endOf('day'), 'month') + 1;
+  const interesesPorMes = {
+    corto: (sale.MONTO_A_CORTO_PLAZO - sale.PRECIO_DE_CONTADO) / 3,
+    largo: (sale.PRECIO_TOTAL - sale.MONTO_A_CORTO_PLAZO) / 7,
+  };
+  const saldoALiquidarHoy =
+    (tiempoTranscurrido <= 1
+      ? sale.PRECIO_DE_CONTADO
+      : tiempoTranscurrido <= 3
+      ? sale.PRECIO_DE_CONTADO + tiempoTranscurrido * interesesPorMes.corto
+      : [4, 5].includes(tiempoTranscurrido)
+      ? sale.MONTO_A_CORTO_PLAZO
+      : tiempoTranscurrido <= 12
+      ? sale.MONTO_A_CORTO_PLAZO +
+        (tiempoTranscurrido - 4) * interesesPorMes.largo
+      : sale.PRECIO_TOTAL) - totalAbonado;
+  // console.log({tiempoTranscurrido, interesesPorMes, saldoALiquidarHoy});
+
   if (loading) {
     return (
       <View style={saleDetailsStyles.loaderContainer}>
@@ -453,13 +532,53 @@ const SaleDetails = () => {
           </Text>
         </View>
         <View style={saleDetailsStyles.personalInfoItem}>
-          <Text style={saleDetailsStyles.textTertiary}>Fecha de venta:</Text>
+          <Text style={saleDetailsStyles.textTertiary}>
+            Aval o responsable:
+          </Text>
           <Text style={saleDetailsStyles.textSecondary}>
-            {dayjs(sale.FECHA).format('DD/MM/YYYY')}
+            {sale.AVAL_O_RESPONSABLE}
           </Text>
         </View>
         <View style={saleDetailsStyles.personalInfoItem}>
-          <View style={saleDetailsStyles.telContainer}>
+          <View style={saleDetailsStyles.row}>
+            <View style={saleDetailsStyles.telInfo}>
+              <Text style={saleDetailsStyles.textTertiary}>
+                Fecha de venta:
+              </Text>
+              <Text style={saleDetailsStyles.textSecondary}>
+                {dayjs(sale.FECHA).format('DD/MM/YYYY')}
+              </Text>
+            </View>
+            <View style={saleDetailsStyles.telActions}>
+              <TouchableOpacity
+                style={[
+                  saleDetailsStyles.telButton,
+                  saleDetailsStyles.telWhatsapp,
+                ]}>
+                <Icon
+                  name="calendar"
+                  size={30}
+                  color="black"
+                  onPress={() => openCalendar()}
+                />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  saleDetailsStyles.telButton,
+                  saleDetailsStyles.telWhatsapp,
+                ]}>
+                <Icon
+                  name="calculator"
+                  size={30}
+                  color="black"
+                  onPress={() => openCalculator()}
+                />
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+        <View style={saleDetailsStyles.personalInfoItem}>
+          <View style={saleDetailsStyles.row}>
             <View style={saleDetailsStyles.telInfo}>
               <Text style={saleDetailsStyles.textTertiary}>Teléfono:</Text>
               <Text style={saleDetailsStyles.textSecondary}>
@@ -497,6 +616,12 @@ const SaleDetails = () => {
           </Text>
         </View>
         <View style={saleDetailsStyles.personalInfoItem}>
+          <Text style={saleDetailsStyles.textTertiary}>
+            Frecuencia de pago:
+          </Text>
+          <Text style={saleDetailsStyles.textSecondary}>{sale.FREC_PAGO}</Text>
+        </View>
+        <View style={saleDetailsStyles.personalInfoItem}>
           <Text style={saleDetailsStyles.textTertiary}>Parcialidad:</Text>
           <Text style={saleDetailsStyles.textSecondary}>
             ${sale.PARCIALIDAD}
@@ -512,6 +637,13 @@ const SaleDetails = () => {
             ${sale.LIMITE_CREDITO}
           </Text>
         </View>
+        <View style={saleDetailsStyles.personalInfoItem}>
+          <Text style={saleDetailsStyles.textTertiary}>Precio de contado:</Text>
+          <Text style={saleDetailsStyles.textSecondary}>
+            ${sale.PRECIO_DE_CONTADO}
+          </Text>
+        </View>
+
         <View style={saleDetailsStyles.personalInfoItem}>
           <Text style={saleDetailsStyles.textTertiary}>
             Precio a {sale.TIEMPO_A_CORTO_PLAZOMESES} mes(es):
@@ -530,13 +662,31 @@ const SaleDetails = () => {
           <Text style={saleDetailsStyles.textTertiary}>Notas:</Text>
           <Text style={saleDetailsStyles.textSecondary}>{sale.NOTAS}</Text>
         </View>
-        {/* <View style={saleDetailsStyles.personalInfoItem}>
-          <Text style={saleDetailsStyles.textTertiary}>
-            Frecuencia de pago:
-          </Text>
-          <Text style={saleDetailsStyles.textSecondary}>{
-          }</Text>
-        </View> */}
+
+        {sale.PRECIO_DE_CONTADO !== 0 && (
+          <View style={saleDetailsStyles.pricingCard}>
+            <Text style={saleDetailsStyles.pricingCardText}>
+              Hoy liquida con
+            </Text>
+            <Text style={saleDetailsStyles.pricingCardTitle}>
+              ${saldoALiquidarHoy.toFixed(0)}
+            </Text>
+            <Text style={saleDetailsStyles.pricingCardSubtitle}>
+              Precio{' '}
+              {tiempoTranscurrido == 1
+                ? 'de contado'
+                : 'a ' + tiempoTranscurrido + ' meses'}
+            </Text>
+            <View style={saleDetailsStyles.divider}></View>
+            <Text style={saleDetailsStyles.pricingCardSecondaryText}>
+              Valido hasta{' '}
+              {dayjs(sale.FECHA)
+                .add(tiempoTranscurrido, 'month')
+                .format('DD/MM/YYYY')}
+            </Text>
+          </View>
+        )}
+
         <Text style={saleDetailsStyles.subtitle}>Productos</Text>
         {productos.map((producto: Producto) => (
           <View style={saleDetailsStyles.productoItem} key={producto.POSICION}>
@@ -616,6 +766,26 @@ const SaleDetails = () => {
               onChangeText={text => handleInputPaymentChange(text)}
               value={payment.toString()}
             />
+            <View style={saleDetailsStyles.paySugerencias}>
+              <Pressable style={saleDetailsStyles.badgeSuccess}>
+                <Text
+                  style={saleDetailsStyles.badgeSuccessText}
+                  onPress={() =>
+                    handleInputPaymentChange(sale.PARCIALIDAD.toString())
+                  }>
+                  {sale.PARCIALIDAD}
+                </Text>
+              </Pressable>
+              {cantsRepeat.map(cant => (
+                <Pressable style={saleDetailsStyles.badgeSuccess} key={cant}>
+                  <Text
+                    style={saleDetailsStyles.badgeSuccessText}
+                    onPress={() => handleInputPaymentChange(cant.toString())}>
+                    {cant}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
             {alertPayment !== '' && (
               <Text style={saleDetailsStyles.alertPayment}>{alertPayment}</Text>
             )}
@@ -695,6 +865,7 @@ const SaleDetails = () => {
               Agregar Visita
             </Text>
             <RNPickerSelect
+              value={selectedNotaVisita}
               onValueChange={value => setSelectedNotaVisita(value)}
               placeholder={{
                 label: NO_SE_ENCONTRABA,
@@ -741,10 +912,16 @@ const SaleDetails = () => {
               ]}
               onPress={handleAddVisita}
               disabled={loadingSave}>
-              <Text
-                style={saleDetailsStyles.addPaymentButtonText}
-                disabled={selectedNotaVisita !== ''}>
-                Agregar
+              <Text style={saleDetailsStyles.addPaymentButtonText}>
+                {loadingSave && (
+                  <ActivityIndicator size="small" color="white" />
+                )}
+
+                {!loadingSave && (
+                  <Text style={saleDetailsStyles.addPaymentButtonText}>
+                    Agregar
+                  </Text>
+                )}
               </Text>
             </Pressable>
             <Pressable
@@ -821,9 +998,9 @@ const SaleDetails = () => {
         <Text style={saleDetailsStyles.subtitle}>Historial de pagos</Text>
         {paymentsOrder.map((payment: PagoServer) => (
           <PaymentItem
-            key={payment.DOCTO_CC_ID}
+            key={payment.ID}
             payment={payment}
-            onPress={() => goToPayment(payment.DOCTO_CC_ID)}
+            onPress={() => goToPayment(payment.ID)}
           />
         ))}
       </View>
@@ -848,7 +1025,7 @@ export interface Payment {
   GUARDADO_EN_MICROSIP: boolean;
 }
 
-export type PaymentDto = Omit<Payment, 'ID'>;
+export type PaymentDto = Payment;
 
 export interface PaymentWithCliente extends Payment {
   CLIENTE: string;

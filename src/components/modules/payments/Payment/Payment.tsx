@@ -80,20 +80,6 @@ ${sale.VENDEDOR_3 && '- ' + sale.VENDEDOR_3}
 
 --------------------------------
 
-HISTORIAL DE PAGOS
-${paymentsOrder
-  .map(
-    pago =>
-      `- ${
-        pago.FORMA_COBRO_ID === CONDONACION_ID ? 'CONDONACION' : 'ABONO'
-      }: $${pago.IMPORTE.toFixed(2)} - ${dayjs(pago.FECHA_HORA_PAGO).format(
-        'DD/MM/YYYY',
-      )}`,
-  )
-  .join('\n')}
-
---------------------------------
-
 PRODUCTOS
 
 ${productos
@@ -110,15 +96,23 @@ ${productos
 FECHA DE ${TICKET_TYPE}: ${dayjs(pago.FECHA_HORA_PAGO).format(
     'DD/MM/YYYY HH:mm',
   )}
-IMPORTE DE ${TICKET_TYPE}: $${pago.IMPORTE.toFixed(2)}
-ATENDIO: ${pago.COBRADOR}
-TELEFONO DEL COBRADOR: ${userData.TELEFONO}
-
---------------------------------
-
 SALDO ANTERIOR: ${NEGRITAS_ON}$${sale.SALDO_REST + pago.IMPORTE}${NEGRITAS_OFF}
 IMPORTE DE ${TICKET_TYPE}: ${NEGRITAS_ON}$${pago.IMPORTE}${NEGRITAS_OFF}
 SALDO ACTUAL: ${NEGRITAS_ON}$${sale.SALDO_REST}${NEGRITAS_OFF}
+
+--------------------------------
+
+HISTORIAL DE PAGOS
+${paymentsOrder
+  .map(
+    pago =>
+      `- ${
+        pago.FORMA_COBRO_ID === CONDONACION_ID ? 'CONDONACION' : 'ABONO'
+      }: $${pago.IMPORTE.toFixed(2)} - ${dayjs(pago.FECHA_HORA_PAGO).format(
+        'DD/MM/YYYY',
+      )}`,
+  )
+  .join('\n')}
 
 --------------------------------
 
@@ -128,6 +122,7 @@ EXIJA SU COMPROBANTE DE PAGO
 TELEFONO: 238-3740684
 WHATSAPP: 238-1105061
 AGENTE: ${pago.COBRADOR}
+TELEFONO DEL AGENTE: ${userData.TELEFONO}
 `;
 
   const isLoading =
@@ -167,7 +162,7 @@ AGENTE: ${pago.COBRADOR}
         disabled={loading || !selectedPrinter}
         title="IMPRIMIR TICKET"
         onPress={() => {
-          print(ticketText), console.log(ticketText);
+          print(ticketText);
         }}
       />
       <View style={styles.section}>

@@ -11,7 +11,7 @@ export const openDatabase = () => {
       location: 'default',
     },
     () => {
-      console.log('Database opened');
+      // console.log('Database opened');
     },
     error => {
       console.error('Error opening database:', error);

@@ -178,6 +178,34 @@ const homeStyles = StyleSheet.create({
     color: TERCIARY_COLOR,
     fontSize: 20,
   },
+  saleContainer: {
+    display: 'flex',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 10,
+    borderRadius: 10,
+    backgroundColor: 'white',
+    shadowColor: TEXT_COLOR_TERTIARY,
+    shadowOffset: {
+      width: 0,
+      height: 0,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 2,
+    elevation: 10,
+  },
+  col: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 5,
+  },
+  iconContainer: {
+    padding: 8,
+    borderRadius: 10,
+    height: 50,
+    width: 50,
+  },
 });
 
 export default homeStyles;

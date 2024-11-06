@@ -37,6 +37,9 @@ export const saleInitialState: SaleServer = {
   DIA_COBRANZA: '',
   DIA_TEMPORAL_COBRANZA: '',
   COBRADOR_ID: 0,
+  AVAL_O_RESPONSABLE: '',
+  PRECIO_DE_CONTADO: 0,
+  FREC_PAGO: 'SEMANAL',
 };
 
 const saleFullInitialState: SaleFull = {

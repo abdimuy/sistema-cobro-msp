@@ -1,10 +1,9 @@
 import {useState, useEffect} from 'react';
-import {Payment} from '../components/modules/sales/SaleDetails/SaleDetails';
-import dayjs from 'dayjs';
 import {PagoServer} from '../screens/home/Home';
 import getPagoLocal from '../services/getPagoLocal';
 
 const pagoInitialState: PagoServer = {
+  ID: '',
   CLIENTE_ID: 0,
   COBRADOR: '',
   COBRADOR_ID: 0,
@@ -20,7 +19,7 @@ const pagoInitialState: PagoServer = {
   ZONA_CLIENTE_ID: 0,
 };
 
-const useGetPago = (pagoId: number) => {
+const useGetPago = (pagoId: string) => {
   const [loading, setLoading] = useState(true);
   const [pago, setPago] = useState<PagoServer>(pagoInitialState);
 

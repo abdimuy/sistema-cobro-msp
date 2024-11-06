@@ -1,6 +1,10 @@
 import {Producto} from '../components/modules/sales/SaleDetails/SaleDetails';
 import {saleInitialState} from '../hooks/useGetSale';
-import {PagoServer, SaleServer} from '../screens/home/Home';
+import {
+  PagoServer,
+  SaleServer,
+  SaleServerProcessed,
+} from '../screens/home/Home';
 import {openDatabase} from '../sqlite/connection';
 
 export interface SaleFull extends SaleServer {
@@ -8,8 +12,9 @@ export interface SaleFull extends SaleServer {
   PRODUCTOS: Producto[];
 }
 
-export interface SaleWithProductos extends SaleServer {
+export interface SaleWithProductos extends SaleServerProcessed {
   PRODUCTOS: Producto[];
+  PAGOS: PagoServer[];
 }
 
 export const saleFullInitialState: SaleFull = {
@@ -21,7 +26,7 @@ export const saleFullInitialState: SaleFull = {
 const getSaleLocal = async (DOCTO_CC_ID: number): Promise<SaleFull> => {
   const db = await openDatabase();
   const query = `
-      SELECT 
+      SELECT
         DOCTO_CC_ACR_ID,
         DOCTO_CC_ID,
         FOLIO,
@@ -55,13 +60,17 @@ const getSaleLocal = async (DOCTO_CC_ID: number): Promise<SaleFull> => {
         NOMBRE_COBRADOR,
         ESTADO_COBRANZA,
         DIA_COBRANZA,
-        DIA_TEMPORAL_COBRANZA
+        DIA_TEMPORAL_COBRANZA,
+        AVAL_O_RESPONSABLE,
+        PRECIO_DE_CONTADO,
+        FREC_PAGO
       FROM ventas WHERE DOCTO_CC_ID = ${DOCTO_CC_ID}
     `;
   const [result] = await db.executeSql(query);
 
   const queryPagos = `
         SELECT 
+            ID,
             CLIENTE_ID,
             NOMBRE_CLIENTE, 
             COBRADOR, 

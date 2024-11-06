@@ -14,6 +14,7 @@ const sendPago = async (
       `
       INSERT INTO pagos
       (
+        ID,
         CLIENTE_ID,
         NOMBRE_CLIENTE,
         COBRADOR,
@@ -28,6 +29,7 @@ const sendPago = async (
         LNG,
         GUARDADO_EN_MICROSIP
       ) VALUES (
+        '${data.ID}',
         ${data.CLIENTE_ID},
         '${data.NOMBRE_CLIENTE}',
         '${data.COBRADOR}',
@@ -45,7 +47,7 @@ const sendPago = async (
       `,
     );
 
-    const query = `
+    let query = `
       UPDATE ventas
       SET
         SALDO_REST = SALDO_REST - ${data.IMPORTE},
@@ -56,19 +58,29 @@ const sendPago = async (
     await dbSqlite.executeSql(query);
   }
 
-  await api.post<{err: ''; body: string}>(
+  const res = await api.post<{err: ''; body: string}>(
     'ventas/add-pago',
     {pago: data},
-    {timeout: 7000},
+    {timeout: 3000},
   );
 
-  const queryUpdateGuardado = `
-            UPDATE pagos
-            SET GUARDADO_EN_MICROSIP = 1
-            WHERE DOCTO_CC_ID = ${data.DOCTO_CC_ID}
-            `;
-  await dbSqlite.executeSql(queryUpdateGuardado);
-  return 'Pago guardado correctamente';
+  console.log(data);
+  console.log(res.status);
+  console.log(res.data);
+
+  const successSended = res?.data?.body === 'Pago agregado con exito';
+
+  if (successSended) {
+    const queryUpdateGuardado = `
+    UPDATE pagos
+    SET GUARDADO_EN_MICROSIP = 1
+    WHERE ID = '${data.ID}'
+    `;
+    await dbSqlite.executeSql(queryUpdateGuardado);
+    return 'Pago guardado correctamente';
+  } else {
+    throw new Error('Error al guardar el pago');
+  }
 };
 
 export default sendPago;

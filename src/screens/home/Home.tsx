@@ -12,20 +12,36 @@ import homeStyles from './home.styles';
 import {AnimatedCircularProgress} from 'react-native-circular-progress';
 import {BACKGROUND_COLOR_PRIMARY, PRIMARY_COLOR} from '../../contants/colors';
 import FocusAwareStatusBar from '../../components/common/FocusAwareStatusBar/FocusAwareStatusBar';
-import {AuthContext} from '../../../App';
+import {
+  AuthContext,
+  requestLocationPermission,
+  RootDrawerParamList,
+} from '../../../App';
 import useGetPagosRuta from '../../hooks/useGetPagosRuta';
 import {auth, db} from '../../firebase/connection';
 import {openDatabase} from '../../sqlite/connection';
 import api from '../../services/api';
 import {getUnsynchronizedLocalPayment} from '../../services/getUnsynchronizedLocalPayment';
-import dayjs from 'dayjs';
-import sendPago from '../../services/sendPago';
-import {
-  PaymentDto,
-  Producto,
-} from '../../components/modules/sales/SaleDetails/SaleDetails';
+import dayjs, {Dayjs} from 'dayjs';
+import {Producto} from '../../components/modules/sales/SaleDetails/SaleDetails';
 import {doc, Timestamp, writeBatch} from '@react-native-firebase/firestore';
+import {getUnsynchronizedLocalVisitas} from '../../services/getUnsynchronizedLocalVisitas';
+import {VisitaLocal} from '../../services/sendVisita';
+import getPorcentajeParcial from '../../services/getPorcentajeParcial';
 import {AxiosError} from 'axios';
+import getLocations from '../../services/getLocations';
+import {getCoords} from '../../utils/dbscan/getCoords';
+import Geolocation from '@react-native-community/geolocation';
+import {useNavigation} from '@react-navigation/native';
+import {DrawerNavigationProp} from '@react-navigation/drawer';
+import {
+  CheckIcon,
+  CloseIcon,
+  Icon,
+  RemoveIcon,
+  RepeatIcon,
+} from '@gluestack-ui/themed';
+import sendPagosNotSent from '../../services/sendPagosNotSent';
 
 export interface SaleServer {
   DOCTO_CC_ACR_ID: number;
@@ -59,12 +75,25 @@ export interface SaleServer {
   ESTADO: string;
   TELEFONO: string;
   NOMBRE_COBRADOR: string;
-  ESTADO_COBRANZA: 'PAGADO' | 'NO PAGADO' | 'PENDIENTE';
+  ESTADO_COBRANZA:
+    | 'PAGADO'
+    | 'NO PAGADO'
+    | 'PENDIENTE'
+    | 'VISITADO'
+    | 'VOLVER VISITAR';
   DIA_COBRANZA: string;
   DIA_TEMPORAL_COBRANZA: string;
+  PRECIO_DE_CONTADO: number;
+  AVAL_O_RESPONSABLE: string;
+  FREC_PAGO: 'SEMANAL' | 'QUINCENAL' | 'MENSUAL';
+}
+
+export interface SaleServerProcessed extends SaleServer {
+  PLAZOS_ATRASADOS: number;
 }
 
 export interface PagoServer {
+  ID: string;
   CLIENTE_ID: number;
   COBRADOR: string;
   COBRADOR_ID: number;
@@ -80,6 +109,11 @@ export interface PagoServer {
   NOMBRE_CLIENTE: string;
 }
 
+type HomeScreenNavigationProp = DrawerNavigationProp<
+  RootDrawerParamList,
+  'Home'
+>;
+
 const Home = () => {
   const {
     userData,
@@ -90,11 +124,26 @@ const Home = () => {
   const [loadingCargaInicial, setLoadingCargaInicial] = useState(false);
   const [pagosNotSent, setPagosNotSent] = useState<PagoServer[]>([]);
   const [loadingPagosNotSent, setLoadingPagosNotSent] = useState<boolean>(true);
+  const [visitasNotSent, setVisitasNotSent] = useState<VisitaLocal[]>([]);
+  const [loadingVisitasNotSent, setLoadingVisitasNotSent] =
+    useState<boolean>(true);
+  const [porcentajeParcial, setPorcentajeParcial] = useState<number>(0);
+  const [locations, setLocations] = useState<
+    {
+      DOCTO_CC_ID: number;
+      LAT: number;
+      LNG: number;
+      DISTANCE_TO_CURRENT_POSITION: number;
+    }[]
+  >([]);
+  const [loadingLocations, setLoadingLocations] = useState<boolean>(true);
   const {
     loading: loadingPagos,
     pagos,
     pagosHoy,
   } = useGetPagosRuta(userData.ZONA_CLIENTE_ID);
+
+  const navigation = useNavigation<HomeScreenNavigationProp>();
 
   const totalCobradoSemanal = pagos.reduce(
     (acc, pago) => acc + pago.IMPORTE,
@@ -106,7 +155,10 @@ const Home = () => {
 
   const handlerCargaInicial = async () => {
     try {
-      const pagosNotSent = await getUnsynchronizedLocalPayment();
+      const pagosNotSent = await getUnsynchronizedLocalPayment(
+        false,
+        dayjs(userData.FECHA_CARGA_INICIAL.toDate().toISOString()),
+      );
       if (pagosNotSent.length > 0) {
         Alert.alert(
           'No se puede realizar la carga inicial',
@@ -121,6 +173,10 @@ const Home = () => {
         return;
       }
       setLoadingCargaInicial(true);
+      await sendPagosNotSent(
+        true,
+        dayjs(userData.FECHA_CARGA_INICIAL.toDate()),
+      );
       const batch = writeBatch(db);
       batch.update(doc(db, 'users', userData.ID), {
         FECHA_CARGA_INICIAL: Timestamp.now(),
@@ -139,13 +195,16 @@ const Home = () => {
     } catch (error) {
       console.error('Error al realizar la carga inicial', error);
       setLoadingCargaInicial(false);
+      Alert.alert(
+        'Error al inicializar semana',
+        'Ha ocurrio un error al inicializar la semana',
+      );
     }
   };
 
-  const getLocalPaymentsNotSent = async () => {
-    return getUnsynchronizedLocalPayment()
+  const getLocalPaymentsNotSent = async (cargaInicialDate: Dayjs) => {
+    return getUnsynchronizedLocalPayment(false, cargaInicialDate)
       .then(pagos => {
-        console.log('Pagos no enviados', pagos.length);
         setPagosNotSent(pagos);
       })
       .catch(err => {
@@ -156,16 +215,153 @@ const Home = () => {
       });
   };
 
+  const getLocalVisitasNotSent = async () => {
+    return getUnsynchronizedLocalVisitas()
+      .then(visitas => {
+        setVisitasNotSent(visitas);
+      })
+      .catch(err => {
+        console.error('Error al obtener las visitas locales no enviadas', err);
+      })
+      .finally(() => {
+        setLoadingVisitasNotSent(false);
+      });
+  };
+
+  const handleSendPagosNotSent = async () => {
+    try {
+      setLoadingCargaInicial(true);
+      await sendPagosNotSent(
+        false,
+        dayjs(userData.FECHA_CARGA_INICIAL.toDate()),
+      );
+    } catch (err) {
+      Alert.alert(
+        'Ocurrio al enviar los pagos pendiente',
+        'Ha ocurrido un error al enviar loos pagos pendientes',
+      );
+    } finally {
+      setLoadingCargaInicial(false);
+    }
+  };
+
+  const handleSendAllPagos = async () => {
+    try {
+      setLoadingCargaInicial(true);
+      await sendPagosNotSent(
+        true,
+        dayjs(userData.FECHA_CARGA_INICIAL.toDate()),
+      );
+    } catch (err) {
+      Alert.alert(
+        'Ocurrio al reenviar',
+        'Ha ocurrido un error al reenviar todos lo pagos',
+      );
+    } finally {
+      setLoadingCargaInicial(false);
+    }
+  };
+
+  const getPorcentajeParcialLocal = () => {
+    getPorcentajeParcial(dayjs(userData.FECHA_CARGA_INICIAL.toDate()))
+      .then(result => {
+        setPorcentajeParcial(result);
+      })
+      .catch(err => {
+        console.error('Error al obtener el porcentaje parcial', err);
+      });
+  };
+
+  const getSalesLocations = () => {
+    setLoadingLocations(true);
+    requestLocationPermission().then(res => {
+      if (res) {
+        Geolocation.getCurrentPosition(
+          position => {
+            getLocations()
+              .then(locations => {
+                let locationsArray = [];
+                for (let location of Object.keys(locations)) {
+                  const coords = locations[Number(location)];
+                  const coordsSale = coords.map(coord => [
+                    coord.LAT,
+                    coord.LNG,
+                  ]);
+                  const clusters = getCoords(coordsSale, {
+                    lat: position.coords.latitude,
+                    lng: position.coords.longitude,
+                  });
+
+                  const newLocation = {
+                    DOCTO_CC_ID: Number(location),
+                    LAT: clusters.centroid.LAT,
+                    LNG: clusters.centroid.LNG,
+                    DISTANCE_TO_CURRENT_POSITION:
+                      clusters.distanceToCurrentPosition,
+                  };
+
+                  locationsArray.push(newLocation);
+                }
+                setLocations(locationsArray);
+              })
+              .catch(err => {
+                console.error('Error al obtener las ubicaciones', err);
+              })
+              .finally(() => {
+                setLoadingLocations(false);
+              });
+          },
+          error => {
+            console.error(error);
+          },
+          {enableHighAccuracy: true, timeout: 20000, maximumAge: 0},
+        );
+      } else {
+        Alert.alert(
+          'Permiso de ubicación denegado',
+          'Para obtener las ubicaciones de los clientes cercanos, debes permitir el acceso a la ubicación',
+          [
+            {
+              text: 'Aceptar',
+            },
+          ],
+          {cancelable: false},
+        );
+      }
+    });
+  };
+
   useEffect(() => {
-    getLocalPaymentsNotSent();
+    if (userData.ID !== '') {
+      getLocalVisitasNotSent();
+      getLocalPaymentsNotSent(
+        dayjs(userData.FECHA_CARGA_INICIAL.toDate().toISOString()),
+      );
+      getPorcentajeParcialLocal();
+    }
+  }, [userData.FECHA_CARGA_INICIAL]);
+
+  useEffect(() => {
+    let listener: NodeJS.Timeout;
+    if (userData.ID !== '') {
+      getSalesLocations();
+      listener = setInterval(() => {
+        getSalesLocations();
+      }, 10000);
+    }
     return () => {
-      console.log('Home unmounted');
+      if (listener) {
+        clearTimeout(listener);
+      }
     };
-  }, []);
+  }, [userData.FECHA_CARGA_INICIAL]);
 
   const getDataFromServer = async () => {
     try {
-      const pagosNotSent = await getUnsynchronizedLocalPayment();
+      const pagosNotSent = await getUnsynchronizedLocalPayment(
+        false,
+        dayjs(userData.FECHA_CARGA_INICIAL.toDate().toISOString()),
+      );
       if (pagosNotSent.length > 0) {
         Alert.alert(
           'No se puede actualizar los datos',
@@ -180,13 +376,26 @@ const Home = () => {
         return;
       }
       setLoadingCargaInicial(true);
+      await sendPagosNotSent(
+        true,
+        dayjs(userData.FECHA_CARGA_INICIAL.toDate()),
+        false,
+      );
+      const url =
+        '/ventas/getAllVentasByZona/' +
+        userData.ZONA_CLIENTE_ID +
+        `?dateInit=${dayjs(userData.FECHA_CARGA_INICIAL.toDate()).format(
+          'YYYY-MM-DD',
+        )}`;
+      console.log(url);
       const serverData = await api.get<{
         body: {
           ventas: SaleServer[];
           pagos: PagoServer[];
           productos: Producto[];
         };
-      }>('/ventas/getAllVentasByZona/' + userData.ZONA_CLIENTE_ID);
+      }>(url);
+      console.log(serverData.data.body.ventas[0]);
       const dbSqlite = await openDatabase();
       await dbSqlite.executeSql(`
         DELETE FROM ventas;
@@ -222,7 +431,7 @@ const Home = () => {
           TIEMPO_A_CORTO_PLAZOMESES,
           MONTO_A_CORTO_PLAZO,
           VENDEDOR_1,
-          VENDEDOR_2,
+          VENDEDOR_2, 
           VENDEDOR_3,
           PRECIO_TOTAL,
           IMPTE_REST,
@@ -235,7 +444,10 @@ const Home = () => {
           NOMBRE_COBRADOR,
           DIA_COBRANZA,
           ESTADO_COBRANZA,
-          DIA_TEMPORAL_COBRANZA
+          DIA_TEMPORAL_COBRANZA,
+          PRECIO_DE_CONTADO,
+          AVAL_O_RESPONSABLE,
+          FREC_PAGO
         ) VALUES ${ventas
           .map(
             v => `(
@@ -307,7 +519,13 @@ const Home = () => {
             '${v.DIA_TEMPORAL_COBRANZA.replace(
               /'/g,
               "''",
-            )}' -- Escapado de comillas simples
+            )}', -- Escapado de comillas simples
+            ${v.PRECIO_DE_CONTADO},
+            '${v.AVAL_O_RESPONSABLE.replace(
+              /'/g,
+              "''",
+            )}', -- Escapado de comillas simples
+            '${v.FREC_PAGO.replace(/'/g, "''")}' -- Escapado de comillas simples
           )`,
           )
           .join(',\n')};
@@ -317,8 +535,18 @@ const Home = () => {
 
       const pagos = serverData.data.body.pagos;
 
+      // Tengo que encontrar los pagos que tiene un mismo id
+      const pagosIdsRepetidos = pagos
+        .map(p => p.ID)
+        .filter((value, index, self) => self.indexOf(value) !== index);
+
+      console.log(pagos.filter(p => p.ID === pagosIdsRepetidos[0]));
+
+      console.log('Pagos repetidos', pagosIdsRepetidos);
+
       const queryPagos = `
         INSERT INTO pagos (
+          ID,
           CLIENTE_ID,
           COBRADOR,
           COBRADOR_ID,
@@ -335,6 +563,7 @@ const Home = () => {
         ) VALUES ${pagos
           .map(
             p => `(
+            '${p.ID}', -- Escapado de comillas simples
             ${p.CLIENTE_ID},
             '${p.COBRADOR.replace(/'/g, "''")}', -- Escapado de comillas simples
             ${p.COBRADOR_ID},
@@ -399,6 +628,9 @@ const Home = () => {
       setLoadingCargaInicial(false);
       Alert.alert('Error al obtener los datos del servidor');
       console.error(error);
+      if (error instanceof AxiosError) {
+        console.error('Error response', error.toJSON());
+      }
     }
   };
 
@@ -422,56 +654,6 @@ const Home = () => {
       ],
       {cancelable: false},
     );
-  };
-
-  const handleSendPagosNotSent = async () => {
-    ToastAndroid.show('Enviando pagos no enviados', ToastAndroid.SHORT);
-
-    if (pagosNotSent.length === 0) {
-      Alert.alert('No hay pagos por enviar');
-      return;
-    }
-    let numPagosSent = 0;
-    for (let pagoNotSend of pagosNotSent) {
-      const pagoToSend: PaymentDto = {
-        CLIENTE_ID: pagoNotSend.CLIENTE_ID,
-        NOMBRE_CLIENTE: pagoNotSend.NOMBRE_CLIENTE,
-        COBRADOR: pagoNotSend.COBRADOR,
-        COBRADOR_ID: pagoNotSend.COBRADOR_ID,
-        DOCTO_CC_ID: pagoNotSend.DOCTO_CC_ID,
-        DOCTO_CC_ACR_ID: pagoNotSend.DOCTO_CC_ACR_ID,
-        FECHA_HORA_PAGO: pagoNotSend.FECHA_HORA_PAGO,
-        FORMA_COBRO_ID: pagoNotSend.FORMA_COBRO_ID,
-        ZONA_CLIENTE_ID: pagoNotSend.ZONA_CLIENTE_ID,
-        IMPORTE: pagoNotSend.IMPORTE,
-        LAT: Number(pagoNotSend.LAT),
-        LNG: Number(pagoNotSend.LNG),
-        GUARDADO_EN_MICROSIP: pagoNotSend.GUARDADO_EN_MICROSIP,
-      };
-      try {
-        await sendPago(pagoToSend, false);
-
-        numPagosSent++;
-      } catch (error) {
-        console.error('Error al enviar el pago', error);
-      }
-      getLocalPaymentsNotSent().catch(err => {
-        console.error('Error al obtener los pagos locales no enviados', err);
-      });
-      const numPagosNotSent = pagosNotSent.length - numPagosSent;
-      Alert.alert(
-        'Pagos enviados',
-        `Se enviaron ${numPagosSent} pagos${
-          numPagosNotSent > 0 ? ` y quedan ${numPagosNotSent} por enviar` : ''
-        }`,
-        [
-          {
-            text: 'Aceptar',
-          },
-        ],
-        {cancelable: false},
-      );
-    }
   };
 
   const handleLogoutButton = () => {
@@ -550,16 +732,12 @@ const Home = () => {
                 <Text style={homeStyles.detailsTitle}>{pagos.length}</Text>
               </View>
             </View>
-            {/* <View style={homeStyles.detailsColumnItem}>
-              <Text style={homeStyles.detailsSubtitle}>
-                Nuevas cuentas esta semana
-              </Text>
-              <Text style={homeStyles.detailsTitle}>8</Text>
-            </View> */}
           </View>
           <View style={homeStyles.detailsRow}>
             <View style={homeStyles.detailsRowCardPrimary}>
-              <Text style={homeStyles.detailsRowCardSubtitle}>Porcentaje</Text>
+              <Text style={homeStyles.detailsRowCardSubtitle}>
+                Porcentaje (Cuentas)
+              </Text>
               <AnimatedCircularProgress
                 size={80}
                 width={8}
@@ -585,6 +763,198 @@ const Home = () => {
                 </Text>
               </Text>
             </View>
+          </View>
+          <View style={[homeStyles.detailsRow, {marginTop: 18}]}>
+            <View style={[homeStyles.detailsRowCardSecondary, {gap: 0}]}>
+              <Text style={homeStyles.detailsRowCardSubtitle}>
+                Porcentaje (Cobro)
+              </Text>
+              <AnimatedCircularProgress
+                size={100}
+                width={8}
+                fill={porcentaje}
+                rotation={180}
+                tintColor={BACKGROUND_COLOR_PRIMARY}
+                duration={2000}>
+                {() => (
+                  <Text style={homeStyles.detailsProgress}>
+                    {((porcentajeParcial / sales.length) * 100).toFixed(1)}%
+                  </Text>
+                )}
+              </AnimatedCircularProgress>
+            </View>
+          </View>
+        </View>
+
+        <View
+          style={[
+            homeStyles.details,
+            {
+              shadowColor: '#000',
+              shadowOffset: {width: 0, height: 0},
+              shadowOpacity: 0,
+              shadowRadius: 0,
+              elevation: 0,
+              padding: 0,
+              gap: 0,
+            },
+          ]}>
+          <View style={homeStyles.row}>
+            <Text
+              style={[
+                homeStyles.detailsTitleSecondary,
+                {marginTop: 10, marginBottom: 10},
+              ]}>
+              CLIENTES CERCANOS
+            </Text>
+            <Pressable
+              style={{
+                padding: 10,
+                paddingHorizontal: 20,
+                backgroundColor: loadingLocations ? 'gray' : PRIMARY_COLOR,
+                borderRadius: 5,
+              }}
+              disabled={loadingLocations}
+              onPress={() => {
+                getSalesLocations();
+              }}>
+              <Text
+                style={{
+                  color: 'white',
+                  fontWeight: '600',
+                  fontSize: 17,
+                }}>
+                {loadingLocations ? 'Cargando...' : 'Actualizar'}
+              </Text>
+            </Pressable>
+          </View>
+          <View style={homeStyles.detailsColumn}>
+            {locations
+              .sort(
+                (a, b) =>
+                  a.DISTANCE_TO_CURRENT_POSITION -
+                  b.DISTANCE_TO_CURRENT_POSITION,
+              )
+              .slice(0, 15)
+              .map((location, index) => {
+                const sale = sales.find(
+                  sale => sale.DOCTO_CC_ID === location.DOCTO_CC_ID,
+                );
+                return (
+                  <Pressable
+                    style={homeStyles.saleContainer}
+                    onPress={() => {
+                      navigation.navigate('Sales', {
+                        screen: 'SaleDetails',
+                        params: {saleId: location.DOCTO_CC_ID},
+                      });
+                    }}
+                    key={location.DOCTO_CC_ID}>
+                    <View key={index} style={[homeStyles.row, {gap: 0}]}>
+                      <View style={[homeStyles.col, {width: '70%'}]}>
+                        <Text
+                          numberOfLines={1}
+                          style={[
+                            homeStyles.text,
+                            {fontWeight: '600', fontSize: 17},
+                          ]}>
+                          {sale?.CLIENTE.slice(0, 30) || ''}
+                        </Text>
+                        <Text
+                          numberOfLines={1}
+                          style={homeStyles.detailsSubtitle}>
+                          {(
+                            sale?.CALLE +
+                            ' ' +
+                            sale?.CIUDAD +
+                            ' ' +
+                            sale?.ESTADO
+                          ).slice(0, 30)}
+                        </Text>
+                        <Text numberOfLines={1}>
+                          <Text style={homeStyles.detailsSubtitle}>
+                            Saldo:{' '}
+                            <Text
+                              style={{
+                                fontWeight: '600',
+                                color: 'black',
+                                fontSize: 17,
+                              }}>
+                              ${sale?.SALDO_REST.toFixed(2)}
+                            </Text>
+                          </Text>
+                        </Text>
+                      </View>
+                      <View
+                        style={[
+                          homeStyles.col,
+                          {width: '30%', alignItems: 'flex-end'},
+                        ]}>
+                        <Text
+                          style={[
+                            homeStyles.detailsTitleSecondary,
+                            {
+                              textAlign: 'right',
+                              fontWeight: '600',
+                            },
+                          ]}>
+                          {location.DISTANCE_TO_CURRENT_POSITION.toFixed(2)} m
+                        </Text>
+                        <View
+                          style={[
+                            homeStyles.iconContainer,
+                            {
+                              backgroundColor:
+                                sale?.ESTADO_COBRANZA === 'PAGADO'
+                                  ? 'lightgreen'
+                                  : sale?.ESTADO_COBRANZA === 'PENDIENTE'
+                                  ? 'lightgray'
+                                  : sale?.ESTADO_COBRANZA === 'NO PAGADO'
+                                  ? 'red'
+                                  : sale?.ESTADO_COBRANZA === 'VISITADO'
+                                  ? 'lightcoral'
+                                  : sale?.ESTADO_COBRANZA === 'VOLVER VISITAR'
+                                  ? 'orange'
+                                  : 'lightgray',
+                            },
+                          ]}>
+                          {sale?.ESTADO_COBRANZA === 'PAGADO' && (
+                            <Icon as={CheckIcon} color="green" />
+                          )}
+                          {sale?.ESTADO_COBRANZA === 'PENDIENTE' && (
+                            <Icon as={RemoveIcon} color="gray" />
+                          )}
+                          {sale?.ESTADO_COBRANZA === 'NO PAGADO' && (
+                            <Icon as={CloseIcon} color="white" />
+                          )}
+                          {sale?.ESTADO_COBRANZA === 'VISITADO' && (
+                            <Icon as={CheckIcon} color="green" />
+                          )}
+                          {sale?.ESTADO_COBRANZA === 'VOLVER VISITAR' && (
+                            <Icon as={RepeatIcon} color="white" />
+                          )}
+                        </View>
+                      </View>
+                    </View>
+                  </Pressable>
+                );
+              })}
+          </View>
+        </View>
+
+        <View style={homeStyles.details}>
+          <Text style={homeStyles.detailsTitleSecondary}>
+            VISITAS SIN ENVIAR
+          </Text>
+          <View style={homeStyles.detailsColumn}>
+            {visitasNotSent.length === 0 && (
+              <Text style={homeStyles.text}>NO HAY VISITAS SIN ENVIAR</Text>
+            )}
+            {visitasNotSent.length > 0 && (
+              <Text style={homeStyles.detailsTitleSecondary}>
+                {visitasNotSent.length} visitas sin enviar
+              </Text>
+            )}
           </View>
         </View>
 
@@ -614,14 +984,22 @@ const Home = () => {
 
       <Pressable
         style={homeStyles.closeSesion}
-        onPress={handleSendPagosNotSent}>
-        <Text style={homeStyles.closeSesionText}>Enviar pagos no enviados</Text>
+        onPress={() => handleSendPagosNotSent()}>
+        <Text style={homeStyles.closeSesionText}>Enviar pagos pendientes</Text>
+      </Pressable>
+
+      <Pressable
+        style={homeStyles.closeSesion}
+        onPress={() => handleSendAllPagos()}>
+        <Text style={homeStyles.closeSesionText}>Reenviar todos los pagos</Text>
       </Pressable>
 
       <Pressable
         style={homeStyles.closeSesion}
         onPress={handleCargaInicialButton}>
-        <Text style={homeStyles.closeSesionText}>Carga inicial</Text>
+        <Text style={homeStyles.closeSesionText}>
+          Inicializar semana de cobro
+        </Text>
       </Pressable>
 
       <Pressable style={homeStyles.closeSesion} onPress={getDataFromServer}>

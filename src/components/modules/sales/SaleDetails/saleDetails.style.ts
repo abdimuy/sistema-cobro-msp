@@ -163,7 +163,7 @@ const saleDetailsStyles = StyleSheet.create({
     color: 'black',
     width: '80%',
   },
-  telContainer: {
+  row: {
     display: 'flex',
     flexDirection: 'row',
     alignItems: 'center',
@@ -310,7 +310,6 @@ const saleDetailsStyles = StyleSheet.create({
     borderColor: 'lightgrey',
     textAlignVertical: 'top',
     borderRadius: 10,
-    marginBottom: 10,
     color: 'black',
     fontSize: 24,
   },
@@ -383,6 +382,66 @@ const saleDetailsStyles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 10,
     backgroundColor: 'lightgrey',
+  },
+  pricingCard: {
+    backgroundColor: PRIMARY_COLOR,
+    borderRadius: 10,
+    paddingHorizontal: 15,
+    paddingVertical: 20,
+    gap: 10,
+    marginHorizontal: 20,
+  },
+  pricingCardTitle: {
+    color: 'white',
+    fontSize: 28,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  pricingCardSubtitle: {
+    color: 'white',
+    fontSize: 20,
+    textAlign: 'center',
+    fontWeight: '600',
+  },
+  pricingCardText: {
+    color: 'white',
+    fontSize: 18,
+    textAlign: 'center',
+    fontWeight: '300',
+  },
+  pricingCardSecondaryText: {
+    color: 'white',
+    fontSize: 14,
+    textAlign: 'center',
+    fontWeight: '300',
+  },
+  divider: {
+    height: 1,
+    borderColor: 'white',
+    borderTopWidth: 1,
+    width: '100%',
+    marginTop: 10,
+    marginBottom: 7,
+  },
+  badgeSuccess: {
+    paddingHorizontal: 20,
+    paddingVertical: 5,
+    flexDirection: 'row',
+    borderRadius: 10,
+    width: 'auto',
+    backgroundColor: '#def7ec',
+    alignSelf: 'flex-start',
+  },
+  badgeSuccessText: {
+    color: '#03543f',
+    fontWeight: '600',
+    fontSize: 24,
+  },
+  paySugerencias: {
+    flexDirection: 'row',
+    gap: 5,
+    flexWrap: 'wrap',
+    justifyContent: 'space-around',
   },
 });
 

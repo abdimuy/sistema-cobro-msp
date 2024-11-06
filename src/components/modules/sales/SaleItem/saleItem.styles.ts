@@ -82,6 +82,13 @@ const saleItemStyles = StyleSheet.create({
     lineHeight: 24,
     width: 'auto',
   },
+  aval: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: TEXT_COLOR_PRIMARY,
+    lineHeight: 24,
+    width: 'auto',
+  },
   address: {
     fontSize: 16,
     color: TEXT_COLOR_TERTIARY,
@@ -97,13 +104,54 @@ const saleItemStyles = StyleSheet.create({
     display: 'flex',
     flexDirection: 'row',
     justifyContent: 'space-between',
-    height: 17,
+    height: 18,
   },
   prograssCant: {
     color: TEXT_COLOR_TERTIARY,
     fontWeight: 'bold',
     fontSize: 18,
     lineHeight: 20,
+  },
+  badge: {
+    marginTop: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    flexDirection: 'row',
+    borderRadius: 10,
+    width: 'auto',
+    alignSelf: 'flex-start',
+  },
+  badgeSuccess: {
+    backgroundColor: '#def7ec',
+  },
+  badgeSuccessText: {
+    color: '#03543f',
+    fontWeight: '600',
+    fontSize: 16,
+  },
+  badgeWarning: {
+    backgroundColor: '#fdf6b2',
+  },
+  badgeWarningText: {
+    color: '#723b13',
+    fontWeight: '600',
+    fontSize: 16,
+  },
+  badgeDanger: {
+    backgroundColor: '#fde8e8',
+  },
+  badgeDangerText: {
+    color: '#9b1c1c',
+    fontWeight: '600',
+    fontSize: 16,
+  },
+  badgeBase: {
+    backgroundColor: '#e1effe',
+  },
+  badgeTextBase: {
+    color: '#1e429f',
+    fontWeight: '600',
+    fontSize: 16,
   },
 });
 

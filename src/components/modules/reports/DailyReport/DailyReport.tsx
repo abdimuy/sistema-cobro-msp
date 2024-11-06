@@ -18,6 +18,7 @@ const DailyReport = () => {
   const [pagos, setPagos] = useState<PagoServer[]>([]);
   const [date, setDate] = useState<Date>(dayjs().toDate());
   const [showDatePicker, setShowDatePicker] = useState<boolean>(false);
+  const [orderBy, setOrderBy] = useState<'NOMBRE' | 'FECHA'>('NOMBRE');
 
   const {
     connectPrinter,
@@ -33,9 +34,6 @@ const DailyReport = () => {
     const dateQ = dayjs(date).startOf('day');
     const startOfDay = dateQ.toISOString();
     const endOfDay = dateQ.endOf('day').toISOString();
-
-    console.log(startOfDay);
-    console.log(endOfDay);
 
     const query = `
       SELECT *
@@ -55,7 +53,6 @@ const DailyReport = () => {
 
   useEffect(() => {
     getListDevices();
-    console.log('Cambio de fecha');
     getPagosDiarios()
       .then(res =>
         res.map(pago =>
@@ -86,6 +83,12 @@ COBRADOR: ${userData.NOMBRE}
 --------------------------------
 
 ${pagos
+  .sort((a, b) => {
+    if (orderBy === 'NOMBRE') {
+      return a.NOMBRE_CLIENTE.localeCompare(b.NOMBRE_CLIENTE);
+    }
+    return dayjs(a.FECHA_HORA_PAGO).diff(dayjs(b.FECHA_HORA_PAGO));
+  })
   .filter(
     pago =>
       pago.FORMA_COBRO_ID === PAGO_EN_EFECTIVO_ID ||
@@ -110,9 +113,26 @@ Total de pagos: ${
   }
   `;
 
+  const changeOrderBy = () => {
+    if (orderBy === 'NOMBRE') {
+      setOrderBy('FECHA');
+    } else {
+      setOrderBy('NOMBRE');
+    }
+  };
+
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Reporte Diario</Text>
+      <Pressable
+        style={[styles.button]}
+        onPress={() => {
+          setShowDatePicker(true);
+        }}>
+        <Text style={[styles.buttonText]}>
+          {dayjs(date).format('DD/MM/YYYY')}
+        </Text>
+      </Pressable>
       <Pressable
         style={[
           styles.button,
@@ -121,10 +141,10 @@ Total de pagos: ${
           },
         ]}
         onPress={() => {
-          setShowDatePicker(true);
+          changeOrderBy();
         }}>
         <Text style={[styles.buttonText]}>
-          {dayjs(date).format('DD/MM/YYYY')}
+          {orderBy === 'NOMBRE' ? 'Ordenar por Nombre' : 'Ordenar por Fecha'}
         </Text>
       </Pressable>
       {showDatePicker && (
@@ -138,17 +158,24 @@ Total de pagos: ${
         />
       )}
       <ScrollView style={styles.list}>
-        {pagos.map(pago => (
-          <View key={pago.DOCTO_CC_ID} style={styles.item}>
-            <View style={{maxWidth: '90%'}}>
-              <Text style={styles.itemSubtitle}>
-                {dayjs(pago.FECHA_HORA_PAGO).format('hh:mm A')}
-              </Text>
-              <Text style={styles.itemTitle}>{pago.NOMBRE_CLIENTE}</Text>
+        {pagos
+          .sort((a, b) => {
+            if (orderBy === 'NOMBRE') {
+              return a.NOMBRE_CLIENTE.localeCompare(b.NOMBRE_CLIENTE);
+            }
+            return dayjs(a.FECHA_HORA_PAGO).diff(dayjs(b.FECHA_HORA_PAGO));
+          })
+          .map(pago => (
+            <View key={pago.DOCTO_CC_ID} style={styles.item}>
+              <View style={{maxWidth: '90%'}}>
+                <Text style={styles.itemSubtitle}>
+                  {dayjs(pago.FECHA_HORA_PAGO).format('hh:mm A')}
+                </Text>
+                <Text style={styles.itemTitle}>{pago.NOMBRE_CLIENTE}</Text>
+              </View>
+              <Text style={styles.itemAmount}>$ {pago.IMPORTE}</Text>
             </View>
-            <Text style={styles.itemAmount}>$ {pago.IMPORTE}</Text>
-          </View>
-        ))}
+          ))}
         <Text style={styles.total}>Total: $ {total}</Text>
       </ScrollView>
       <View style={styles.section}>

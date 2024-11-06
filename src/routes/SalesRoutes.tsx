@@ -7,7 +7,7 @@ import Payment from '../components/modules/payments/Payment/Payment';
 export type SalesStackParamList = {
   Sales: undefined;
   SaleDetails: {saleId: number};
-  Payment: {paymentId: number; saleId: number};
+  Payment: {paymentId: string; saleId: number};
 };
 
 const SalesStack = createStackNavigator<SalesStackParamList>();
@@ -16,6 +16,7 @@ const SalesNavigator: React.FC = () => {
   return (
     <SalesStack.Navigator
       initialRouteName="Sales"
+      detachInactiveScreens
       screenOptions={{
         headerShown: false,
       }}>

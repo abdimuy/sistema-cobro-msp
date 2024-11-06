@@ -48,14 +48,25 @@ const salesStyles = StyleSheet.create({
     color: 'grey',
   },
   headerSearchInput: {
-    height: 40,
-    borderRadius: 20,
+    height: 45,
+    borderTopLeftRadius: 10,
+    borderBottomLeftRadius: 10,
     flex: 1,
     backgroundColor: 'white',
     color: 'black',
     fontSize: 20,
     paddingHorizontal: 14,
     paddingVertical: 0,
+  },
+  headerSearchIconContainer: {
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'white',
+    borderTopRightRadius: 10,
+    borderBottomRightRadius: 10,
+    height: 45,
+    width: 45,
   },
 });
 
