@@ -24,6 +24,7 @@ const saleItemStyles = StyleSheet.create({
     shadowOpacity: 0.74,
     shadowRadius: 25,
     elevation: 16,
+    overflow: 'hidden',
   },
   isNew: {
     backgroundColor: '#e1effe',

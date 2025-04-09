@@ -70,7 +70,9 @@ CLIENTE: ${NEGRITAS_ON}${sale.CLIENTE}${NEGRITAS_OFF}
 DIRECCION: ${sale.CALLE + ' ' + sale.CIUDAD + ', ' + sale.ESTADO}
 TELEFONO: ${sale.TELEFONO}
 FECHA VENTA: ${dayjs(sale.FECHA).format('DD/MM/YYYY')}
-TOTAL VENTA: $${sale.PRECIO_TOTAL.toFixed(2)}
+PRECIO TOTAL $${sale.PRECIO_TOTAL.toFixed(2)}
+PRECIO A ${sale.TIEMPO_A_CORTO_PLAZOMESES} MESES: $${sale.MONTO_A_CORTO_PLAZO}
+PRECIO DE CONTADO: $${sale.PRECIO_DE_CONTADO}
 ENGANCHE: $${sale.ENGANCHE.toFixed(2)}
 PARCIALIDAD: $${sale.PARCIALIDAD.toFixed(2)}
 VENDEDORES:
@@ -124,6 +126,7 @@ WHATSAPP: 238-1105061
 AGENTE: ${pago.COBRADOR}
 TELEFONO DEL AGENTE: ${userData.TELEFONO}
 `;
+  console.log(ticketText);
 
   const isLoading =
     loading ||

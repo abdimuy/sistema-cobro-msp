@@ -1,6 +1,6 @@
 import {VisitaType} from '../components/modules/sales/SaleDetails/SaleDetails';
 import {openDatabase} from '../sqlite/connection';
-import api from './api';
+import initializeApi from './api';
 
 export interface VisitaLocal {
   ID: string;
@@ -22,13 +22,14 @@ const sendVisita = async (
   insertInLocalDB: boolean = true,
   tipoVisita: VisitaType,
   DOCTO_CC_ACR_ID?: number,
+  sendToServer: boolean = true,
 ): Promise<string> => {
   const db = await openDatabase();
 
   if (insertInLocalDB) {
     const sql = `
-        INSERT INTO visitas (ID, CLIENTE_ID, COBRADOR, COBRADOR_ID, FECHA, FORMA_COBRO_ID, LAT, LNG, NOTA, TIPO_VISITA, ZONA_CLIENTE_ID, IMPTE_DOCTO_CC_ID)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO visitas (ID, CLIENTE_ID, COBRADOR, COBRADOR_ID, FECHA, FORMA_COBRO_ID, LAT, LNG, NOTA, TIPO_VISITA, ZONA_CLIENTE_ID, IMPTE_DOCTO_CC_ID, GUARDADO_EN_MICROSIP)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
     const values = [
       visita.ID,
@@ -43,6 +44,7 @@ const sendVisita = async (
       visita.TIPO_VISITA,
       visita.ZONA_CLIENTE_ID,
       visita.IMPTE_DOCTO_CC_ID,
+      0,
     ];
     await db.executeSql(sql, values);
 
@@ -65,14 +67,22 @@ const sendVisita = async (
     await db.executeSql(sqlUpdate, [typeVisita, DOCTO_CC_ACR_ID]);
   }
 
-  await api.post('/visitas', visita, {
-    timeout: 3000,
-  });
+  const api = await initializeApi();
+  if (sendToServer) {
+    await api.post('/visitas', visita, {
+      timeout: 3000,
+    });
 
-  const sqlDelete = `DELETE FROM visitas WHERE ID = ?`;
-  await db.executeSql(sqlDelete, [visita.ID]);
+    const sqlDelete = `
+    UPDATE visitas
+    SET
+    GUARDADO_EN_MICROSIP = 1
+    WHERE ID = ?
+  `;
 
-  return 'Visita enviada correctamente';
+    await db.executeSql(sqlDelete, [visita.ID]);
+  }
+  return 'Proceso terminado correctamente';
 };
 
 export default sendVisita;

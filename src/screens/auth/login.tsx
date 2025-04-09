@@ -24,6 +24,7 @@ const LoginScreen = () => {
   // };
 
   const handleLogin = async () => {
+    console.log('Inciando sesión');
     try {
       auth()
         .signInWithEmailAndPassword(email, password)

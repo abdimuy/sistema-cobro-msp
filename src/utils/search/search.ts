@@ -10,6 +10,8 @@ export const search = <T>(
     keys,
     includeScore: true,
     threshold,
+    shouldSort: true,
+    distance: 100,
   });
 
   return fuse.search(search).map(result => result.item);

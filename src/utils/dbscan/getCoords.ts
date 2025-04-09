@@ -2,12 +2,14 @@ import {DBSCAN} from 'density-clustering';
 
 export type Coords = number[][];
 
+export type Coord = {lat: number; lng: number};
+
 export const getCoords = (
   coords: Coords,
   currentPosition: {lat: number; lng: number},
 ) => {
   const dbscan = new DBSCAN();
-  const clusters = dbscan.run(coords, 0.001, 2);
+  const clusters = dbscan.run(coords, 0.0005, 3);
   const outliers = dbscan.noise;
 
   const coordsByCluster = clusters.map(cluster =>
@@ -22,16 +24,38 @@ export const getCoords = (
       distanceToCurrentPosition: 1000000,
     };
   }
-  const centroid = getCentroid(coordsByCluster[0]);
 
-  const distanceToCurrentPosition = calculateDistance(
-    centroid.LAT,
-    centroid.LNG,
-    currentPosition.lat,
-    currentPosition.lng,
-  );
+  let centroid = {
+    LAT: 0,
+    LNG: 0,
+  };
+  let distance = Number.MAX_VALUE;
+  let centroids = [];
+  for (let coordByCluster of coordsByCluster) {
+    const currentCentroid = getCentroid(coordByCluster);
 
-  return {coordsByCluster, outliers, centroid, distanceToCurrentPosition};
+    const distanceToCurrentPosition = calculateDistance(
+      currentCentroid.LAT,
+      currentCentroid.LNG,
+      currentPosition.lat,
+      currentPosition.lng,
+    );
+
+    centroids.push(currentCentroid);
+
+    if (distanceToCurrentPosition < distance) {
+      distance = distanceToCurrentPosition;
+      centroid = currentCentroid;
+    }
+  }
+
+  return {
+    coordsByCluster,
+    outliers,
+    centroid,
+    distanceToCurrentPosition: distance,
+    centroids,
+  };
 };
 
 const calculateDistance = (
@@ -54,17 +78,6 @@ const calculateDistance = (
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   const distancia = R * c * 1000; // Distancia en metros
   return distancia;
-};
-
-const calcularDistanciaEuclidiana = (
-  lat1: number,
-  lon1: number,
-  lat2: number,
-  lon2: number,
-) => {
-  const dLat = lat2 - lat1;
-  const dLon = lon2 - lon1;
-  return Math.sqrt(dLat * dLat + dLon * dLon) * 111; // 1 grado ≈ 111 km en longitud y latitud
 };
 
 function getCentroid(coords: Coords) {

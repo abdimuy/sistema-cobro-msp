@@ -180,7 +180,7 @@ const homeStyles = StyleSheet.create({
   },
   saleContainer: {
     display: 'flex',
-    flexDirection: 'row',
+    flexDirection: 'column',
     justifyContent: 'space-between',
     alignItems: 'center',
     padding: 10,
@@ -194,6 +194,7 @@ const homeStyles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 2,
     elevation: 10,
+    minHeight: 158,
   },
   col: {
     display: 'flex',

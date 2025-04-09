@@ -1,16 +1,24 @@
 import {Dayjs} from 'dayjs';
 import {openDatabase} from '../sqlite/connection';
 
-const getPorcentajeParcial = async (fechaInit: Dayjs): Promise<number> => {
+const getPorcentajeParcial = async (
+  fechaInit: Dayjs,
+): Promise<{
+  porcentaje: number;
+  rows: {
+    CLIENTE: string;
+    DOCTO_CC_ID: number;
+  }[];
+}> => {
   const db = await openDatabase();
   const [rows] = await db.executeSql(`
     SELECT
-      ventas.CLIENTE,
+      ventas.DOCTO_CC_ID,
       CASE
-        WHEN SUM(pagos.IMPORTE) / ventas.PARCIALIDAD > 1
+        WHEN SUM(pagos.IMPORTE) / ventas.PARCIALIDAD >= 1
         THEN (
-          CASE WHEN ventas.NUM_PAGOS_ATRASADOS >=  SUM(pagos.IMPORTE) / ventas.PARCIALIDAD
-          THEN  SUM(pagos.IMPORTE) / ventas.PARCIALIDAD
+          CASE WHEN ventas.NUM_PAGOS_ATRASADOS >= SUM(pagos.IMPORTE) / ventas.PARCIALIDAD
+          THEN SUM(pagos.IMPORTE) / ventas.PARCIALIDAD
           ELSE 1
           END
         )
@@ -30,7 +38,7 @@ const getPorcentajeParcial = async (fechaInit: Dayjs): Promise<number> => {
       CASE 
       WHEN ((ventas.PARCIALIDADES_TRANSCURRIDAS * ventas.PARCIALIDAD - (ventas.PRECIO_TOTAL - ventas.SALDO_REST)) / ventas.PARCIALIDAD) > (ventas.SALDO_REST / ventas.PARCIALIDAD)
       THEN (ventas.SALDO_REST / ventas.PARCIALIDAD)
-            ELSE ((ventas.PARCIALIDADES_TRANSCURRIDAS * ventas.PARCIALIDAD - (ventas.PRECIO_TOTAL - ventas.SALDO_REST)) / ventas.PARCIALIDAD)
+            ELSE ((ventas.PARCIALIDADES_TRANSCURRIDAS * ventas.PARCIALIDAD - (ventas.PRECIO_TOTAL - ventas.SALDO_REST - ventas.ENGANCHE)) / ventas.PARCIALIDAD)
       END AS NUM_PAGOS_ATRASADOS,
       ventas.PARCIALIDAD
       FROM (
@@ -43,10 +51,11 @@ const getPorcentajeParcial = async (fechaInit: Dayjs): Promise<number> => {
         ventas.FREC_PAGO,
         ventas.SALDO_REST,
         ventas.PRECIO_TOTAL,
+        ventas.ENGANCHE,
         ventas.PARCIALIDAD,
         -- Calcular la diferencia de días en una subconsulta
         (JULIANDAY(CASE WHEN ventas.SALDO_REST = 0 THEN MAX(pagos.FECHA_HORA_PAGO) ELSE date('now') END) - 
-        JULIANDAY(ventas.FECHA)) / CASE 
+        JULIANDAY(ventas.FECHA)) / CASE
         WHEN ventas.FREC_PAGO = 'SEMANAL' THEN 7
         WHEN ventas.FREC_PAGO = 'QUINCENAL' THEN 15
         WHEN ventas.FREC_PAGO = 'MENSUAL' THEN 30
@@ -59,11 +68,18 @@ const getPorcentajeParcial = async (fechaInit: Dayjs): Promise<number> => {
       ) AS ventas ON pagos.DOCTO_CC_ACR_ID = ventas.DOCTO_CC_ID
       WHERE pagos.FECHA_HORA_PAGO >= '${fechaInit.toISOString()}'
        GROUP BY pagos.DOCTO_CC_ACR_ID
-        `);
+  `);
 
-  return rows.rows.raw().reduce((acc: number, row: any) => {
+  const data = rows.rows.raw();
+  const porcentaje = data.reduce((acc: number, row: any) => {
     return row.PORCENTAJE + acc;
   }, 0);
+  const clientes = data;
+
+  return {
+    porcentaje,
+    rows: clientes,
+  };
 };
 
 export default getPorcentajeParcial;

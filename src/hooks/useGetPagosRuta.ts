@@ -44,9 +44,16 @@ const useGetPagosRuta = (zonaClienteId: number) => {
       WHERE FECHA_HORA_PAGO BETWEEN ? AND ?
       AND FORMA_COBRO_ID IN (157, 158, 52569)
     `;
+
+    const dayInitDate = dayjs()
+      .startOf('day')
+      .isAfter(dayjs(userData.FECHA_CARGA_INICIAL.toDate()))
+      ? dayjs().startOf('day').toISOString()
+      : dayjs(userData.FECHA_CARGA_INICIAL.toDate()).toISOString();
+
     const res = await dbSqlite.executeSql(query, [
-      dayjs().startOf('day').toDate().toISOString(),
-      dayjs().endOf('day').toDate().toISOString(),
+      dayInitDate,
+      dayjs().endOf('day').toISOString(),
     ]);
     const pagosHoy: Payment[] = [];
     for (let i = 0; i < res[0].rows.length; i++) {
@@ -62,7 +69,13 @@ const useGetPagosRuta = (zonaClienteId: number) => {
       .finally(() => setLoadingHoy(false));
   }, [zonaClienteId]);
 
-  return {pagos, loading: loading || loadingHoy, pagosHoy};
+  return {
+    pagos,
+    loading: loading || loadingHoy,
+    pagosHoy,
+    getPagos,
+    getPagosHoy,
+  };
 };
 
 export default useGetPagosRuta;

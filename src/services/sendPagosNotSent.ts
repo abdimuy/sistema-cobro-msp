@@ -2,7 +2,10 @@ import {Alert, ToastAndroid} from 'react-native';
 import {getUnsynchronizedLocalPayment} from './getUnsynchronizedLocalPayment';
 import {Dayjs} from 'dayjs';
 import {getUnsynchronizedLocalVisitas} from './getUnsynchronizedLocalVisitas';
-import {PaymentDto} from '../components/modules/sales/SaleDetails/SaleDetails';
+import {
+  PaymentDto,
+  VisitaType,
+} from '../components/modules/sales/SaleDetails/SaleDetails';
 import sendPago from './sendPago';
 import sendVisita from './sendVisita';
 
@@ -57,7 +60,13 @@ const sendPagosNotSent = async (
   let numVisitasSent = 0;
   for (let visitaNotSend of visitasNotSent) {
     try {
-      await sendVisita(visitaNotSend, false, 'No se encontraba');
+      await sendVisita(
+        visitaNotSend,
+        false,
+        visitaNotSend.TIPO_VISITA as VisitaType,
+        0,
+        true,
+      );
       numVisitasSent++;
     } catch (error) {
       console.error('Error al enviar la visita', error);

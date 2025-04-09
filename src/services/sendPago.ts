@@ -1,11 +1,12 @@
 import dayjs from 'dayjs';
 import {openDatabase} from '../sqlite/connection';
 import {PaymentDto} from '../components/modules/sales/SaleDetails/SaleDetails';
-import api from './api';
+import initializeApi from './api';
 
 const sendPago = async (
   data: PaymentDto,
   insertInLocalDB: boolean = true,
+  sendToServer: boolean = true,
 ): Promise<string> => {
   const dbSqlite = await openDatabase();
 
@@ -58,29 +59,29 @@ const sendPago = async (
     await dbSqlite.executeSql(query);
   }
 
-  const res = await api.post<{err: ''; body: string}>(
-    'ventas/add-pago',
-    {pago: data},
-    {timeout: 3000},
-  );
+  const api = await initializeApi();
+  if (sendToServer) {
+    const res = await api.post<{err: ''; body: string}>(
+      'ventas/add-pago',
+      {pago: data},
+      {timeout: 3000},
+    );
 
-  console.log(data);
-  console.log(res.status);
-  console.log(res.data);
+    const successSended = res?.data?.body === 'Pago agregado con exito';
 
-  const successSended = res?.data?.body === 'Pago agregado con exito';
-
-  if (successSended) {
-    const queryUpdateGuardado = `
-    UPDATE pagos
-    SET GUARDADO_EN_MICROSIP = 1
-    WHERE ID = '${data.ID}'
-    `;
-    await dbSqlite.executeSql(queryUpdateGuardado);
-    return 'Pago guardado correctamente';
-  } else {
-    throw new Error('Error al guardar el pago');
+    if (successSended) {
+      const queryUpdateGuardado = `
+        UPDATE pagos
+        SET GUARDADO_EN_MICROSIP = 1
+        WHERE ID = '${data.ID}'
+      `;
+      await dbSqlite.executeSql(queryUpdateGuardado);
+      return 'Pago guardado correctamente';
+    } else {
+      throw new Error('Error al guardar el pago');
+    }
   }
+  return 'Proceso de insertar pago finalizado';
 };
 
 export default sendPago;

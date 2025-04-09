@@ -20,9 +20,11 @@ import {
 import useGetPagosRuta from '../../hooks/useGetPagosRuta';
 import {auth, db} from '../../firebase/connection';
 import {openDatabase} from '../../sqlite/connection';
-import api from '../../services/api';
+import initializeApi from '../../services/api';
 import {getUnsynchronizedLocalPayment} from '../../services/getUnsynchronizedLocalPayment';
 import dayjs, {Dayjs} from 'dayjs';
+import 'dayjs/locale/es';
+import relativeTime from 'dayjs/plugin/relativeTime';
 import {Producto} from '../../components/modules/sales/SaleDetails/SaleDetails';
 import {doc, Timestamp, writeBatch} from '@react-native-firebase/firestore';
 import {getUnsynchronizedLocalVisitas} from '../../services/getUnsynchronizedLocalVisitas';
@@ -42,6 +44,14 @@ import {
   RepeatIcon,
 } from '@gluestack-ui/themed';
 import sendPagosNotSent from '../../services/sendPagosNotSent';
+import ProgressBar from '../../components/common/ProgressBar/ProgressBar';
+import getSalesLocal from '../../services/getSalesLocal';
+import {SaleWithProductos} from '../../services/getSaleLocal';
+import truncarNumero from '../../utils/math/trucarNumero';
+import useGetAPIConfig from '../../hooks/useGetAPIConfig';
+
+dayjs.extend(relativeTime);
+dayjs.locale('es');
 
 export interface SaleServer {
   DOCTO_CC_ACR_ID: number;
@@ -75,18 +85,20 @@ export interface SaleServer {
   ESTADO: string;
   TELEFONO: string;
   NOMBRE_COBRADOR: string;
-  ESTADO_COBRANZA:
-    | 'PAGADO'
-    | 'NO PAGADO'
-    | 'PENDIENTE'
-    | 'VISITADO'
-    | 'VOLVER VISITAR';
+  ESTADO_COBRANZA: EstadoCobranza;
   DIA_COBRANZA: string;
   DIA_TEMPORAL_COBRANZA: string;
   PRECIO_DE_CONTADO: number;
   AVAL_O_RESPONSABLE: string;
   FREC_PAGO: 'SEMANAL' | 'QUINCENAL' | 'MENSUAL';
 }
+
+export type EstadoCobranza =
+  | 'PAGADO'
+  | 'NO PAGADO'
+  | 'PENDIENTE'
+  | 'VISITADO'
+  | 'VOLVER VISITAR';
 
 export interface SaleServerProcessed extends SaleServer {
   PLAZOS_ATRASADOS: number;
@@ -117,10 +129,12 @@ type HomeScreenNavigationProp = DrawerNavigationProp<
 const Home = () => {
   const {
     userData,
-    sales,
+    // sales,
     salesLoading: loading,
   } = React.useContext(AuthContext);
 
+  const [sales, setSales] = useState<SaleWithProductos[]>([]);
+  const [salesLoading, setSalesLoading] = useState<boolean>(true);
   const [loadingCargaInicial, setLoadingCargaInicial] = useState(false);
   const [pagosNotSent, setPagosNotSent] = useState<PagoServer[]>([]);
   const [loadingPagosNotSent, setLoadingPagosNotSent] = useState<boolean>(true);
@@ -141,7 +155,10 @@ const Home = () => {
     loading: loadingPagos,
     pagos,
     pagosHoy,
+    getPagos,
+    getPagosHoy,
   } = useGetPagosRuta(userData.ZONA_CLIENTE_ID);
+  const {baseURL} = useGetAPIConfig();
 
   const navigation = useNavigation<HomeScreenNavigationProp>();
 
@@ -151,7 +168,23 @@ const Home = () => {
   );
   const totalCobradoHoy = pagosHoy.reduce((acc, pago) => acc + pago.IMPORTE, 0);
 
-  const porcentaje = (pagos.length / sales.length) * 100;
+  const porcentajeDecimal = pagos.length / sales.length;
+
+  const porcentaje = isFinite(porcentajeDecimal) ? porcentajeDecimal * 100 : 0;
+
+  useEffect(() => {
+    getSalesLocal(false)
+      .then(sales => {
+        console.log('Ventas obtenidas');
+        setSales(sales);
+      })
+      .catch(err => {
+        console.log('Error al obtener la ventas', err);
+      })
+      .finally(() => {
+        setSalesLoading(false);
+      });
+  }, []);
 
   const handlerCargaInicial = async () => {
     try {
@@ -173,11 +206,17 @@ const Home = () => {
         return;
       }
       setLoadingCargaInicial(true);
-      await sendPagosNotSent(
-        true,
-        dayjs(userData.FECHA_CARGA_INICIAL.toDate()),
-      );
+
+      const sqlite = await openDatabase();
+      await sqlite.executeSql(`
+        UPDATE ventas SET ESTADO_COBRANZA = 'PENDIENTE';
+      `);
+      // await sendPagosNotSent(
+      //   true,
+      //   dayjs(userData.FECHA_CARGA_INICIAL.toDate()),
+      // );
       const batch = writeBatch(db);
+
       batch.update(doc(db, 'users', userData.ID), {
         FECHA_CARGA_INICIAL: Timestamp.now(),
       });
@@ -186,6 +225,9 @@ const Home = () => {
         .then(() => {
           console.log('Carga inicial exitosa');
           setLoadingCargaInicial(false);
+          // getPagos();
+          // getPagosHoy();
+          // getSalesLocal(false);
           ToastAndroid.show('Carga inicial exitosa', ToastAndroid.SHORT);
         })
         .catch(error => {
@@ -265,7 +307,8 @@ const Home = () => {
   const getPorcentajeParcialLocal = () => {
     getPorcentajeParcial(dayjs(userData.FECHA_CARGA_INICIAL.toDate()))
       .then(result => {
-        setPorcentajeParcial(result);
+        console.log(result.rows);
+        setPorcentajeParcial(result.porcentaje);
       })
       .catch(err => {
         console.error('Error al obtener el porcentaje parcial', err);
@@ -388,6 +431,7 @@ const Home = () => {
           'YYYY-MM-DD',
         )}`;
       console.log(url);
+      const api = await initializeApi();
       const serverData = await api.get<{
         body: {
           ventas: SaleServer[];
@@ -395,8 +439,21 @@ const Home = () => {
           productos: Producto[];
         };
       }>(url);
-      console.log(serverData.data.body.ventas[0]);
       const dbSqlite = await openDatabase();
+
+      const [statusSalesResponse] = await dbSqlite.executeSql(`
+        SELECT
+          ESTADO_COBRANZA,
+          DOCTO_CC_ID
+        FROM
+          ventas;
+      `);
+
+      const statusSales: {
+        ESTADO_COBRANZA: EstadoCobranza;
+        DOCTO_CC_ID: number;
+      }[] = statusSalesResponse.rows.raw();
+
       await dbSqlite.executeSql(`
         DELETE FROM ventas;
       `);
@@ -406,130 +463,226 @@ const Home = () => {
       await dbSqlite.executeSql(`
         DELETE FROM productos;
       `);
+      await dbSqlite.executeSql(`
+        DELETE FROM visitas;
+      `);
 
-      const ventas = serverData.data.body.ventas;
+      let ventas = serverData.data.body.ventas;
+      ventas = ventas.map(venta => {
+        return {
+          ...venta,
+          ESTADO_COBRANZA:
+            statusSales.find(
+              statusSale => venta.DOCTO_CC_ID === statusSale.DOCTO_CC_ID,
+            )?.ESTADO_COBRANZA || 'PENDIENTE',
+        };
+      });
+
+      // const query = `
+      //   INSERT INTO ventas (
+      //     DOCTO_CC_ACR_ID,
+      //     DOCTO_CC_ID,
+      //     FOLIO,
+      //     CLIENTE_ID,
+      //     APLICADO,
+      //     COBRADOR_ID,
+      //     CLIENTE,
+      //     ZONA_CLIENTE_ID,
+      //     LIMITE_CREDITO,
+      //     NOTAS,
+      //     ZONA_NOMBRE,
+      //     IMPORTE_PAGO_PROMEDIO,
+      //     TOTAL_IMPORTE,
+      //     NUM_IMPORTES,
+      //     FECHA,
+      //     PARCIALIDAD,
+      //     ENGANCHE,
+      //     TIEMPO_A_CORTO_PLAZOMESES,
+      //     MONTO_A_CORTO_PLAZO,
+      //     VENDEDOR_1,
+      //     VENDEDOR_2,
+      //     VENDEDOR_3,
+      //     PRECIO_TOTAL,
+      //     IMPTE_REST,
+      //     SALDO_REST,
+      //     FECHA_ULT_PAGO,
+      //     CALLE,
+      //     CIUDAD,
+      //     ESTADO,
+      //     TELEFONO,
+      //     NOMBRE_COBRADOR,
+      //     DIA_COBRANZA,
+      //     ESTADO_COBRANZA,
+      //     DIA_TEMPORAL_COBRANZA,
+      //     PRECIO_DE_CONTADO,
+      //     AVAL_O_RESPONSABLE,
+      //     FREC_PAGO
+      //   ) VALUES ${ventas
+      //     .map(
+      //       v => `(
+      //       ${v.DOCTO_CC_ACR_ID},
+      //       ${v.DOCTO_CC_ID},
+      //       '${v.FOLIO.replace(/'/g, "''")}', -- Escapado de comillas simples
+      //       ${v.CLIENTE_ID},
+      //       '${v.APLICADO.replace(/'/g, "''")}', -- Escapado de comillas simples
+      //       ${v.COBRADOR_ID},
+      //       '${v.CLIENTE.replace(/'/g, "''")}', -- Escapado de comillas simples
+      //       ${v.ZONA_CLIENTE_ID},
+      //       ${v.LIMITE_CREDITO},
+      //       '${JSON.stringify(v.NOTAS).replace(/\\u[0-9A-fa-f]{4}/g, "''")}',
+      //       '${v.ZONA_NOMBRE.replace(
+      //         /'/g,
+      //         "''",
+      //       )}', -- Escapado de comillas simples
+      //       ${
+      //         v.IMPORTE_PAGO_PROMEDIO === null
+      //           ? 'NULL'
+      //           : v.IMPORTE_PAGO_PROMEDIO
+      //       },
+      //       ${v.TOTAL_IMPORTE},
+      //       ${v.NUM_IMPORTES},
+      //       '${
+      //         v.FECHA
+      //       }', -- Asegúrate de que la fecha esté en el formato correcto
+      //       ${v.PARCIALIDAD},
+      //       ${v.ENGANCHE},
+      //       ${v.TIEMPO_A_CORTO_PLAZOMESES},
+      //       ${v.MONTO_A_CORTO_PLAZO},
+      //       '${v.VENDEDOR_1.replace(
+      //         /'/g,
+      //         "''",
+      //       )}', -- Escapado de comillas simples
+      //       '${v.VENDEDOR_2.replace(
+      //         /'/g,
+      //         "''",
+      //       )}', -- Escapado de comillas simples
+      //       '${v.VENDEDOR_3.replace(
+      //         /'/g,
+      //         "''",
+      //       )}', -- Escapado de comillas simples
+      //       ${v.PRECIO_TOTAL},
+      //       ${v.IMPTE_REST},
+      //       ${v.SALDO_REST},
+      //       ${
+      //         v.FECHA_ULT_PAGO === null ? 'NULL' : `'${v.FECHA_ULT_PAGO}'`
+      //       }, -- Escapado y NULL
+      //       '${JSON.stringify(v.CALLE).replace(
+      //         /\\u[0-9A-fa-f]{4}/g,
+      //         "''",
+      //       )}', -- Escapado de comillas simples
+      //       '${v.CIUDAD.replace(/'/g, "''")}', -- Escapado de comillas simples
+      //       '${v.ESTADO.replace(/'/g, "''")}', -- Escapado de comillas simples
+      //       '${v.TELEFONO.replace(/'/g, "''")}', -- Escapado de comillas simples
+      //       '${v.NOMBRE_COBRADOR.replace(
+      //         /'/g,
+      //         "''",
+      //       )}', -- Escapado de comillas simples
+      //       '${v.DIA_COBRANZA.replace(
+      //         /'/g,
+      //         "''",
+      //       )}', -- Escapado de comillas simples
+      //       '${v.ESTADO_COBRANZA.replace(
+      //         /'/g,
+      //         "''",
+      //       )}', -- Escapado de comillas simples
+      //       '${v.DIA_TEMPORAL_COBRANZA.replace(
+      //         /'/g,
+      //         "''",
+      //       )}', -- Escapado de comillas simples
+      //       ${v.PRECIO_DE_CONTADO},
+      //       '${v.AVAL_O_RESPONSABLE.replace(
+      //         /'/g,
+      //         "''",
+      //       )}', -- Escapado de comillas simples
+      //       '${v.FREC_PAGO.replace(/'/g, "''")}' -- Escapado de comillas simples
+      //     )`,
+      //     )
+      //     .join(',\n')};
+      // `;
 
       const query = `
-        INSERT INTO ventas (
-          DOCTO_CC_ACR_ID,
-          DOCTO_CC_ID,
-          FOLIO,
-          CLIENTE_ID,
-          APLICADO,
-          COBRADOR_ID,
-          CLIENTE,
-          ZONA_CLIENTE_ID,
-          LIMITE_CREDITO,
-          NOTAS,
-          ZONA_NOMBRE,
-          IMPORTE_PAGO_PROMEDIO,
-          TOTAL_IMPORTE,
-          NUM_IMPORTES,
-          FECHA,
-          PARCIALIDAD,
-          ENGANCHE,
-          TIEMPO_A_CORTO_PLAZOMESES,
-          MONTO_A_CORTO_PLAZO,
-          VENDEDOR_1,
-          VENDEDOR_2, 
-          VENDEDOR_3,
-          PRECIO_TOTAL,
-          IMPTE_REST,
-          SALDO_REST,
-          FECHA_ULT_PAGO,
-          CALLE,
-          CIUDAD,
-          ESTADO,
-          TELEFONO,
-          NOMBRE_COBRADOR,
-          DIA_COBRANZA,
-          ESTADO_COBRANZA,
-          DIA_TEMPORAL_COBRANZA,
-          PRECIO_DE_CONTADO,
-          AVAL_O_RESPONSABLE,
-          FREC_PAGO
-        ) VALUES ${ventas
-          .map(
-            v => `(
-            ${v.DOCTO_CC_ACR_ID},
-            ${v.DOCTO_CC_ID},
-            '${v.FOLIO.replace(/'/g, "''")}', -- Escapado de comillas simples
-            ${v.CLIENTE_ID},
-            '${v.APLICADO.replace(/'/g, "''")}', -- Escapado de comillas simples
-            ${v.COBRADOR_ID},
-            '${v.CLIENTE.replace(/'/g, "''")}', -- Escapado de comillas simples
-            ${v.ZONA_CLIENTE_ID},
-            ${v.LIMITE_CREDITO},
-            '${JSON.stringify(v.NOTAS).replace(/\\u[0-9A-fa-f]{4}/g, "''")}',
-            '${v.ZONA_NOMBRE.replace(
-              /'/g,
-              "''",
-            )}', -- Escapado de comillas simples
-            ${
-              v.IMPORTE_PAGO_PROMEDIO === null
-                ? 'NULL'
-                : v.IMPORTE_PAGO_PROMEDIO
-            },
-            ${v.TOTAL_IMPORTE},
-            ${v.NUM_IMPORTES},
-            '${
-              v.FECHA
-            }', -- Asegúrate de que la fecha esté en el formato correcto
-            ${v.PARCIALIDAD},
-            ${v.ENGANCHE},
-            ${v.TIEMPO_A_CORTO_PLAZOMESES},
-            ${v.MONTO_A_CORTO_PLAZO},
-            '${v.VENDEDOR_1.replace(
-              /'/g,
-              "''",
-            )}', -- Escapado de comillas simples
-            '${v.VENDEDOR_2.replace(
-              /'/g,
-              "''",
-            )}', -- Escapado de comillas simples
-            '${v.VENDEDOR_3.replace(
-              /'/g,
-              "''",
-            )}', -- Escapado de comillas simples
-            ${v.PRECIO_TOTAL},
-            ${v.IMPTE_REST},
-            ${v.SALDO_REST},
-            ${
-              v.FECHA_ULT_PAGO === null ? 'NULL' : `'${v.FECHA_ULT_PAGO}'`
-            }, -- Escapado y NULL
-            '${JSON.stringify(v.CALLE).replace(
-              /\\u[0-9A-fa-f]{4}/g,
-              "''",
-            )}', -- Escapado de comillas simples
-            '${v.CIUDAD.replace(/'/g, "''")}', -- Escapado de comillas simples
-            '${v.ESTADO.replace(/'/g, "''")}', -- Escapado de comillas simples
-            '${v.TELEFONO.replace(/'/g, "''")}', -- Escapado de comillas simples
-            '${v.NOMBRE_COBRADOR.replace(
-              /'/g,
-              "''",
-            )}', -- Escapado de comillas simples
-            '${v.DIA_COBRANZA.replace(
-              /'/g,
-              "''",
-            )}', -- Escapado de comillas simples
-            '${v.ESTADO_COBRANZA.replace(
-              /'/g,
-              "''",
-            )}', -- Escapado de comillas simples
-            '${v.DIA_TEMPORAL_COBRANZA.replace(
-              /'/g,
-              "''",
-            )}', -- Escapado de comillas simples
-            ${v.PRECIO_DE_CONTADO},
-            '${v.AVAL_O_RESPONSABLE.replace(
-              /'/g,
-              "''",
-            )}', -- Escapado de comillas simples
-            '${v.FREC_PAGO.replace(/'/g, "''")}' -- Escapado de comillas simples
-          )`,
-          )
-          .join(',\n')};
-      `;
+  INSERT INTO ventas (
+    DOCTO_CC_ACR_ID,
+    DOCTO_CC_ID,
+    FOLIO,
+    CLIENTE_ID,
+    APLICADO,
+    COBRADOR_ID,
+    CLIENTE,
+    ZONA_CLIENTE_ID,
+    LIMITE_CREDITO,
+    NOTAS,
+    ZONA_NOMBRE,
+    IMPORTE_PAGO_PROMEDIO,
+    TOTAL_IMPORTE,
+    NUM_IMPORTES,
+    FECHA,
+    PARCIALIDAD,
+    ENGANCHE,
+    TIEMPO_A_CORTO_PLAZOMESES,
+    MONTO_A_CORTO_PLAZO,
+    VENDEDOR_1,
+    VENDEDOR_2, 
+    VENDEDOR_3,
+    PRECIO_TOTAL,
+    IMPTE_REST,
+    SALDO_REST,
+    FECHA_ULT_PAGO,
+    CALLE,
+    CIUDAD,
+    ESTADO,
+    TELEFONO,
+    NOMBRE_COBRADOR,
+    DIA_COBRANZA,
+    ESTADO_COBRANZA,
+    DIA_TEMPORAL_COBRANZA,
+    PRECIO_DE_CONTADO,
+    AVAL_O_RESPONSABLE,
+    FREC_PAGO
+  ) VALUES ${ventas
+    .map(
+      v => `(
+      ${v.DOCTO_CC_ACR_ID},
+      ${v.DOCTO_CC_ID},
+      '${v.FOLIO.replace(/'/g, "''")}',
+      ${v.CLIENTE_ID},
+      '${v.APLICADO.replace(/'/g, "''")}',
+      ${v.COBRADOR_ID},
+      '${v.CLIENTE.replace(/'/g, "''")}',
+      ${v.ZONA_CLIENTE_ID},
+      ${v.LIMITE_CREDITO},
+      '${v.NOTAS.replace(/'/g, "''")}',
+      '${v.ZONA_NOMBRE.replace(/'/g, "''")}',
+      ${v.IMPORTE_PAGO_PROMEDIO === null ? 'NULL' : v.IMPORTE_PAGO_PROMEDIO},
+      ${v.TOTAL_IMPORTE},
+      ${v.NUM_IMPORTES},
+      '${v.FECHA}',
+      ${v.PARCIALIDAD},
+      ${v.ENGANCHE},
+      ${v.TIEMPO_A_CORTO_PLAZOMESES},
+      ${v.MONTO_A_CORTO_PLAZO},
+      '${v.VENDEDOR_1.replace(/'/g, "''")}',
+      '${v.VENDEDOR_2.replace(/'/g, "''")}',
+      '${v.VENDEDOR_3.replace(/'/g, "''")}',
+      ${v.PRECIO_TOTAL},
+      ${v.IMPTE_REST},
+      ${v.SALDO_REST},
+      ${v.FECHA_ULT_PAGO === null ? 'NULL' : `'${v.FECHA_ULT_PAGO}'`},
+      '${v.CALLE.replace(/'/g, "''")}',
+      '${v.CIUDAD.replace(/'/g, "''")}',
+      '${v.ESTADO.replace(/'/g, "''")}',
+      '${v.TELEFONO.replace(/'/g, "''")}',
+      '${v.NOMBRE_COBRADOR.replace(/'/g, "''")}',
+      '${v.DIA_COBRANZA.replace(/'/g, "''")}',
+      '${v.ESTADO_COBRANZA.replace(/'/g, "''")}',
+      '${v.DIA_TEMPORAL_COBRANZA.replace(/'/g, "''")}',
+      ${v.PRECIO_DE_CONTADO},
+      '${v.AVAL_O_RESPONSABLE.replace(/'/g, "''")}',
+      '${v.FREC_PAGO.replace(/'/g, "''")}'
+    )`,
+    )
+    .join(',\n')};
+`;
 
       await dbSqlite.executeSql(query);
 
@@ -563,31 +716,29 @@ const Home = () => {
         ) VALUES ${pagos
           .map(
             p => `(
-            '${p.ID}', -- Escapado de comillas simples
+            '${p.ID}',
             ${p.CLIENTE_ID},
-            '${p.COBRADOR.replace(/'/g, "''")}', -- Escapado de comillas simples
+            '${p.COBRADOR.replace(/'/g, "''")}',
             ${p.COBRADOR_ID},
             ${p.DOCTO_CC_ACR_ID},
             ${p.DOCTO_CC_ID},
-            '${
-              p.FECHA_HORA_PAGO
-            }', -- Asegúrate de que la fecha esté en el formato correcto
+            '${p.FECHA_HORA_PAGO}',
             ${p.FORMA_COBRO_ID},
             ${p.GUARDADO_EN_MICROSIP ? 1 : 0},
             ${p.IMPORTE},
-            '${p.LAT.replace(/'/g, "''")}', -- Escapado de comillas simples
-            '${p.LNG.replace(/'/g, "''")}', -- Escapado de comillas simples
+            '${p.LAT.replace(/'/g, "''")}',
+            '${p.LNG.replace(/'/g, "''")}',
             ${p.ZONA_CLIENTE_ID},
-            '${p.NOMBRE_CLIENTE.replace(
-              /'/g,
-              "''",
-            )}' -- Escapado de comillas simples
+            '${p.NOMBRE_CLIENTE.replace(/'/g, "''")}'
           )`,
           )
           .join(',\n')};
       `;
+      // console.log(pagos.slice(0, 4));
 
-      await dbSqlite.executeSql(queryPagos);
+      if (pagos.length > 0) {
+        await dbSqlite.executeSql(queryPagos);
+      }
 
       const productos = serverData.data.body.productos;
 
@@ -620,6 +771,10 @@ const Home = () => {
       `;
 
       await dbSqlite.executeSql(queryProductos);
+
+      // getPagos();
+      // getPagosHoy();
+      // getSalesLocal(false);
 
       Alert.alert('Datos obtenidos del servidor correctamente');
 
@@ -738,29 +893,47 @@ const Home = () => {
               <Text style={homeStyles.detailsRowCardSubtitle}>
                 Porcentaje (Cuentas)
               </Text>
-              <AnimatedCircularProgress
-                size={80}
-                width={8}
-                fill={porcentaje}
-                rotation={180}
-                tintColor={BACKGROUND_COLOR_PRIMARY}
-                duration={2000}>
-                {() => (
-                  <Text style={homeStyles.detailsProgress}>
-                    {porcentaje.toFixed(0)}%
-                  </Text>
-                )}
-              </AnimatedCircularProgress>
+              {loadingPagos || salesLoading ? (
+                <ActivityIndicator
+                  size="large"
+                  color={'white'}
+                  style={{margin: 'auto'}}
+                />
+              ) : (
+                // <AnimatedCircularProgress
+                //   size={80}
+                //   width={8}
+                //   fill={porcentaje}
+                //   rotation={180}
+                //   tintColor={BACKGROUND_COLOR_PRIMARY}
+                //   duration={2000}>
+                //   {() => (
+                <Text style={homeStyles.detailsProgress}>
+                  {truncarNumero(porcentaje, 2)}%
+                </Text>
+                //   )}
+                // </AnimatedCircularProgress>
+              )}
             </View>
             <View style={homeStyles.detailsRowCardSecondary}>
               <Text style={homeStyles.detailsRowCardSubtitle}>
                 Cntas. cobradas
               </Text>
               <Text style={homeStyles.detailsRowCardTitle}>
-                {pagos.length || 0}
-                <Text style={homeStyles.detailsRowCardText}>
-                  /{sales.length}
-                </Text>
+                {loadingPagos || salesLoading ? (
+                  <ActivityIndicator
+                    size="large"
+                    color={'white'}
+                    style={{margin: 'auto'}}
+                  />
+                ) : (
+                  <>
+                    <>{pagos.length || 0}</>
+                    <Text style={homeStyles.detailsRowCardText}>
+                      /{sales.length}
+                    </Text>
+                  </>
+                )}
               </Text>
             </View>
           </View>
@@ -769,21 +942,47 @@ const Home = () => {
               <Text style={homeStyles.detailsRowCardSubtitle}>
                 Porcentaje (Cobro)
               </Text>
-              <AnimatedCircularProgress
-                size={100}
-                width={8}
-                fill={porcentaje}
-                rotation={180}
-                tintColor={BACKGROUND_COLOR_PRIMARY}
-                duration={2000}>
-                {() => (
-                  <Text style={homeStyles.detailsProgress}>
-                    {((porcentajeParcial / sales.length) * 100).toFixed(1)}%
-                  </Text>
-                )}
-              </AnimatedCircularProgress>
+              {loadingPagos || salesLoading ? (
+                <ActivityIndicator
+                  size="large"
+                  color={'white'}
+                  style={{margin: 'auto'}}
+                />
+              ) : (
+                <AnimatedCircularProgress
+                  size={100}
+                  width={8}
+                  fill={porcentaje}
+                  rotation={180}
+                  tintColor={BACKGROUND_COLOR_PRIMARY}
+                  duration={2000}>
+                  {() => (
+                    <Text style={homeStyles.detailsProgress}>
+                      {isFinite(porcentajeParcial / sales.length)
+                        ? truncarNumero(
+                            (porcentajeParcial / sales.length) * 100,
+                            2,
+                          )
+                        : 0.0}
+                      %
+                    </Text>
+                  )}
+                </AnimatedCircularProgress>
+              )}
             </View>
           </View>
+          <Text style={[homeStyles.detailsSubtitle, {marginTop: 10}]}>
+            Inicio de semana:{' '}
+            <Text
+              style={[
+                homeStyles.detailsSubtitle,
+                {marginTop: 10, color: 'black', fontWeight: '600'},
+              ]}>
+              {dayjs(userData.FECHA_CARGA_INICIAL.toDate())
+                .format('ddd DD/MM/YYYY hh:mm A')
+                .toLocaleUpperCase()}
+            </Text>
+          </Text>
         </View>
 
         <View
@@ -835,11 +1034,12 @@ const Home = () => {
                   a.DISTANCE_TO_CURRENT_POSITION -
                   b.DISTANCE_TO_CURRENT_POSITION,
               )
-              .slice(0, 15)
+              .slice(0, 10)
               .map((location, index) => {
                 const sale = sales.find(
                   sale => sale.DOCTO_CC_ID === location.DOCTO_CC_ID,
                 );
+                if (sales.length === 0) return null;
                 return (
                   <Pressable
                     style={homeStyles.saleContainer}
@@ -850,89 +1050,146 @@ const Home = () => {
                       });
                     }}
                     key={location.DOCTO_CC_ID}>
-                    <View key={index} style={[homeStyles.row, {gap: 0}]}>
-                      <View style={[homeStyles.col, {width: '70%'}]}>
-                        <Text
-                          numberOfLines={1}
-                          style={[
-                            homeStyles.text,
-                            {fontWeight: '600', fontSize: 17},
-                          ]}>
-                          {sale?.CLIENTE.slice(0, 30) || ''}
-                        </Text>
-                        <Text
-                          numberOfLines={1}
-                          style={homeStyles.detailsSubtitle}>
-                          {(
-                            sale?.CALLE +
-                            ' ' +
-                            sale?.CIUDAD +
-                            ' ' +
-                            sale?.ESTADO
-                          ).slice(0, 30)}
-                        </Text>
-                        <Text numberOfLines={1}>
-                          <Text style={homeStyles.detailsSubtitle}>
-                            Saldo:{' '}
-                            <Text
-                              style={{
-                                fontWeight: '600',
-                                color: 'black',
-                                fontSize: 17,
-                              }}>
-                              ${sale?.SALDO_REST.toFixed(2)}
+                    <View style={{gap: 10}}>
+                      <View key={index} style={[homeStyles.row, {gap: 0}]}>
+                        <View style={[homeStyles.col, {width: '70%'}]}>
+                          <Text
+                            numberOfLines={1}
+                            style={[
+                              homeStyles.text,
+                              {fontWeight: '600', fontSize: 17},
+                            ]}>
+                            {sale?.CLIENTE.slice(0, 30) || ''}
+                          </Text>
+                          <Text
+                            numberOfLines={1}
+                            style={homeStyles.detailsSubtitle}>
+                            {(
+                              sale?.CALLE +
+                              ' ' +
+                              sale?.CIUDAD +
+                              ' ' +
+                              sale?.ESTADO
+                            ).slice(0, 30)}
+                          </Text>
+                          <Text numberOfLines={1}>
+                            <Text style={homeStyles.detailsSubtitle}>
+                              {sale?.PRODUCTOS.map(p => p.ARTICULO).join(' ,')}
                             </Text>
                           </Text>
-                        </Text>
-                      </View>
-                      <View
-                        style={[
-                          homeStyles.col,
-                          {width: '30%', alignItems: 'flex-end'},
-                        ]}>
-                        <Text
-                          style={[
-                            homeStyles.detailsTitleSecondary,
-                            {
-                              textAlign: 'right',
-                              fontWeight: '600',
-                            },
-                          ]}>
-                          {location.DISTANCE_TO_CURRENT_POSITION.toFixed(2)} m
-                        </Text>
+                          <Text numberOfLines={1}>
+                            <Text style={homeStyles.detailsSubtitle}>
+                              PARCIALIDAD:{' '}
+                              <Text
+                                style={{
+                                  fontWeight: '600',
+                                  color: 'black',
+                                  fontSize: 17,
+                                }}>
+                                ${sale?.PARCIALIDAD.toFixed(2)}
+                              </Text>
+                            </Text>
+                          </Text>
+                        </View>
                         <View
                           style={[
-                            homeStyles.iconContainer,
-                            {
-                              backgroundColor:
-                                sale?.ESTADO_COBRANZA === 'PAGADO'
-                                  ? 'lightgreen'
-                                  : sale?.ESTADO_COBRANZA === 'PENDIENTE'
-                                  ? 'lightgray'
-                                  : sale?.ESTADO_COBRANZA === 'NO PAGADO'
-                                  ? 'red'
-                                  : sale?.ESTADO_COBRANZA === 'VISITADO'
-                                  ? 'lightcoral'
-                                  : sale?.ESTADO_COBRANZA === 'VOLVER VISITAR'
-                                  ? 'orange'
-                                  : 'lightgray',
-                            },
+                            homeStyles.col,
+                            {width: '30%', alignItems: 'flex-end'},
                           ]}>
-                          {sale?.ESTADO_COBRANZA === 'PAGADO' && (
-                            <Icon as={CheckIcon} color="green" />
-                          )}
-                          {sale?.ESTADO_COBRANZA === 'PENDIENTE' && (
-                            <Icon as={RemoveIcon} color="gray" />
-                          )}
-                          {sale?.ESTADO_COBRANZA === 'NO PAGADO' && (
-                            <Icon as={CloseIcon} color="white" />
-                          )}
-                          {sale?.ESTADO_COBRANZA === 'VISITADO' && (
-                            <Icon as={CheckIcon} color="green" />
-                          )}
-                          {sale?.ESTADO_COBRANZA === 'VOLVER VISITAR' && (
-                            <Icon as={RepeatIcon} color="white" />
-                          )}
+                          <Text
+                            style={[
+                              homeStyles.detailsTitleSecondary,
+                              {
+                                textAlign: 'right',
+                                fontWeight: '600',
+                              },
+                            ]}>
+                            {location.DISTANCE_TO_CURRENT_POSITION.toFixed(1)} m
+                          </Text>
+                          <View
+                            style={[
+                              homeStyles.iconContainer,
+                              {
+                                backgroundColor:
+                                  sale?.ESTADO_COBRANZA === 'PAGADO'
+                                    ? 'lightgreen'
+                                    : sale?.ESTADO_COBRANZA === 'PENDIENTE'
+                                    ? 'lightgray'
+                                    : sale?.ESTADO_COBRANZA === 'NO PAGADO'
+                                    ? 'red'
+                                    : sale?.ESTADO_COBRANZA === 'VISITADO'
+                                    ? 'lightcoral'
+                                    : sale?.ESTADO_COBRANZA === 'VOLVER VISITAR'
+                                    ? 'orange'
+                                    : 'lightgray',
+                              },
+                            ]}>
+                            {sale?.ESTADO_COBRANZA === 'PAGADO' && (
+                              <Icon as={CheckIcon} color="green" />
+                            )}
+                            {sale?.ESTADO_COBRANZA === 'PENDIENTE' && (
+                              <Icon as={RemoveIcon} color="gray" />
+                            )}
+                            {sale?.ESTADO_COBRANZA === 'NO PAGADO' && (
+                              <Icon as={CloseIcon} color="white" />
+                            )}
+                            {sale?.ESTADO_COBRANZA === 'VISITADO' && (
+                              <Icon as={CheckIcon} color="green" />
+                            )}
+                            {sale?.ESTADO_COBRANZA === 'VOLVER VISITAR' && (
+                              <Icon as={RepeatIcon} color="white" />
+                            )}
+                          </View>
+                        </View>
+                      </View>
+
+                      <View style={{gap: 5}}>
+                        <ProgressBar
+                          backgroundColor="lightgray"
+                          backgroudColorFilled={PRIMARY_COLOR}
+                          value={
+                            (((sale?.PRECIO_TOTAL || 0) -
+                              (sale?.SALDO_REST || 0)) /
+                              (sale?.PRECIO_TOTAL || 1)) *
+                            100
+                          }
+                          height={10}
+                          width="100%"
+                          borderRadius={5}
+                        />
+                        <View
+                          style={{
+                            flexDirection: 'row',
+                            justifyContent: 'space-between',
+                          }}>
+                          <Text numberOfLines={1}>
+                            <Text style={homeStyles.detailsSubtitle}>
+                              <Text
+                                style={{
+                                  fontWeight: '600',
+                                  color: 'black',
+                                  fontSize: 17,
+                                }}>
+                                $
+                                {(sale?.PRECIO_TOTAL || 0) -
+                                  (sale?.SALDO_REST || 0)}
+                              </Text>{' '}
+                              Abonado
+                            </Text>
+                          </Text>
+                          <Text numberOfLines={1}>
+                            <Text style={homeStyles.detailsSubtitle}>
+                              Saldo:{' '}
+                              <Text
+                                style={{
+                                  fontWeight: '600',
+                                  color: 'black',
+                                  fontSize: 17,
+                                }}>
+                                ${sale?.SALDO_REST}
+                              </Text>
+                            </Text>
+                          </Text>
                         </View>
                       </View>
                     </View>
@@ -982,6 +1239,10 @@ const Home = () => {
         </View>
       </View>
 
+      <Pressable style={homeStyles.closeSesion} onPress={getDataFromServer}>
+        <Text style={homeStyles.closeSesionText}>Actualizar datos</Text>
+      </Pressable>
+
       <Pressable
         style={homeStyles.closeSesion}
         onPress={() => handleSendPagosNotSent()}>
@@ -994,6 +1255,10 @@ const Home = () => {
         <Text style={homeStyles.closeSesionText}>Reenviar todos los pagos</Text>
       </Pressable>
 
+      <Pressable style={homeStyles.closeSesion} onPress={handleLogoutButton}>
+        <Text style={homeStyles.closeSesionText}>Cerrar sesión</Text>
+      </Pressable>
+
       <Pressable
         style={homeStyles.closeSesion}
         onPress={handleCargaInicialButton}>
@@ -1002,13 +1267,14 @@ const Home = () => {
         </Text>
       </Pressable>
 
-      <Pressable style={homeStyles.closeSesion} onPress={getDataFromServer}>
-        <Text style={homeStyles.closeSesionText}>Actualizar datos</Text>
-      </Pressable>
-
-      <Pressable style={homeStyles.closeSesion} onPress={handleLogoutButton}>
-        <Text style={homeStyles.closeSesionText}>Cerrar sesión</Text>
-      </Pressable>
+      <View style={{marginVertical: 10, gap: 4}}>
+        <Text style={{color: 'gray', textAlign: 'center', fontSize: 20}}>
+          Version: 1.0.7
+        </Text>
+        <Text style={{color: 'gray', textAlign: 'center', fontSize: 18}}>
+          API URL: {baseURL}
+        </Text>
+      </View>
     </ScrollView>
   );
 };

@@ -11,14 +11,25 @@ import {
   ScrollView,
   ActivityIndicator,
   Alert,
+  ImageBackground,
+  ToastAndroid,
+  FlatList,
 } from 'react-native';
-import React, {useContext, useEffect, useMemo, useRef, useState} from 'react';
+import React, {
+  memo,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import saleDetailsStyles from './saleDetails.style';
 import Icon from 'react-native-vector-icons/FontAwesome';
+import Icon6 from 'react-native-vector-icons/FontAwesome6';
 import {PRIMARY_COLOR} from '../../../../contants/colors';
 import MapView, {Marker} from 'react-native-maps';
 import dayjs from 'dayjs';
-import Geolocation from '@react-native-community/geolocation';
 import RNPickerSelect from 'react-native-picker-select';
 import {AuthContext} from '../../../../../App';
 import useGetSale from '../../../../hooks/useGetSale';
@@ -26,12 +37,20 @@ import {SalesStackParamList} from '../../../../routes/SalesRoutes';
 import {RouteProp, useNavigation, useRoute} from '@react-navigation/native';
 import {StackNavigationProp} from '@react-navigation/stack';
 import useGetProductosByFolio from '../../../../hooks/useGetProductosByFolio';
-import {openDatabase} from '../../../../sqlite/connection';
 import {PagoServer} from '../../../../screens/home/Home';
-import api from '../../../../services/api';
 import sendPago from '../../../../services/sendPago';
 import sendVisita, {VisitaLocal} from '../../../../services/sendVisita';
 import uuid from 'react-native-uuid';
+import 'dayjs/locale/es'; // Cargar el idioma español
+import Card from '../../../common/Card/Card';
+import relativeTime from 'dayjs/plugin/relativeTime';
+import useCalculateLocation from '../../../../hooks/useCalculateLocation';
+import getAccuratePosition, {
+  checkGPSEnabled,
+} from '../../../../utils/geolocation/getAccuratePosition';
+
+dayjs.extend(relativeTime);
+dayjs.locale('es');
 
 export interface Producto {
   ARTICULO: string;
@@ -64,12 +83,46 @@ export const PAGO_EN_EFECTIVO_ID = 157;
 export const PAGO_CON_TRANSFERENCIA_ID = 52569;
 export const CONDONACION_ID = 137026;
 
+const requestLocationPermission = async () => {
+  try {
+    const granted = await PermissionsAndroid.request(
+      PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+      {
+        title: 'Permiso de ubicación',
+        message:
+          'La aplicación necesita acceso a tu ubicación para poder seguir funcionando' +
+          'por favor acepta el permiso',
+        buttonNeutral: 'Preguntar después',
+        buttonNegative: 'Cancelar',
+        buttonPositive: 'OK',
+      },
+    );
+    if (granted === PermissionsAndroid.RESULTS.GRANTED) {
+      PermissionsAndroid.request(
+        PermissionsAndroid.PERMISSIONS.ACCESS_BACKGROUND_LOCATION,
+        {
+          title: 'Permiso de ubicación en segundo plano',
+          message:
+            'La aplicación necesita acceso a tu ubicación en segundo plano para poder seguir funcionando',
+          buttonNeutral: 'Preguntar después',
+          buttonNegative: 'Cancelar',
+          buttonPositive: 'OK',
+        },
+      );
+    }
+  } catch (err) {
+    console.warn(err);
+  }
+};
+
 const SaleDetails = () => {
-  const {userData} = useContext(AuthContext);
+  const {userData, updatePaymentCoords, updateVisitaCoords} =
+    useContext(AuthContext);
   const route = useRoute<SaleDetailScreenRouteProp>();
   const {saleId} = route.params;
   const navigation = useNavigation<SaleDetailsNavigationProp>();
-  const {sale, loading, getSaleAgain} = useGetSale(saleId);
+  const {sale, loading, getSaleAgain, otherSales, porcentajeParcialBySale} =
+    useGetSale(saleId);
   const [loadingSave, setLoadingSave] = useState<boolean>(false);
   const refLoadingSave = useRef(loadingSave);
   const [lat, setLat] = useState<number>(0);
@@ -86,6 +139,15 @@ const SaleDetails = () => {
   const [selectedFormaCobro, setSelectedFormaCobro] =
     useState<number>(PAGO_EN_EFECTIVO_ID);
   const [alertPayment, setAlertPayment] = useState<string>('');
+  const [showAllLocations, setShowAllLocations] = useState<boolean>(false);
+  const coords = useMemo(
+    () => sale.pagos.map(pago => [Number(pago.LAT), Number(pago.LNG)]),
+    [sale.pagos],
+  );
+  const {centroids} = useCalculateLocation({
+    coords: coords,
+    currentPosition: {lat: 0, lng: 0},
+  });
 
   useEffect(() => {
     refLoadingSave.current = loadingSave;
@@ -98,24 +160,24 @@ const SaleDetails = () => {
     return ((sale.PRECIO_TOTAL - sale.SALDO_REST) / sale.PRECIO_TOTAL) * 100;
   }, [sale.PRECIO_TOTAL, sale.SALDO_REST]);
 
-  const callNumber = (phone: string) => {
+  const callNumber = useCallback((phone: string) => {
     Linking.openURL(`tel:${phone}`);
-  };
+  }, []);
 
-  const sendWhatsapp = (phone: string) => {
+  const sendWhatsapp = useCallback((phone: string) => {
     Linking.openURL('whatsapp://send?text= &phone=' + phone);
-  };
+  }, []);
 
   const handleOpenMap = () => {
     setModalMapVisible(true);
   };
 
-  const openCalendar = () => {
+  const openCalendar = useCallback(() => {
     const url = 'content://com.android.calendar/time/'; // Para Android
     Linking.openURL(url).catch(err =>
       console.error('No se puede abrir el calendario', err),
     );
-  };
+  }, []);
 
   const openCalculator = () => {
     const url = 'content://com.android.calculator2/';
@@ -124,119 +186,90 @@ const SaleDetails = () => {
     );
   };
 
-  const requestLocationPermission = async () => {
-    try {
-      const granted = await PermissionsAndroid.request(
-        PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
-        {
-          title: 'Permiso de ubicación',
-          message:
-            'La aplicación necesita acceso a tu ubicación para poder seguir funcionando' +
-            'por favor acepta el permiso',
-          buttonNeutral: 'Preguntar después',
-          buttonNegative: 'Cancelar',
-          buttonPositive: 'OK',
-        },
-      );
-      if (granted === PermissionsAndroid.RESULTS.GRANTED) {
-        PermissionsAndroid.request(
-          PermissionsAndroid.PERMISSIONS.ACCESS_BACKGROUND_LOCATION,
-          {
-            title: 'Permiso de ubicación en segundo plano',
-            message:
-              'La aplicación necesita acceso a tu ubicación en segundo plano para poder seguir funcionando',
-            buttonNeutral: 'Ask Me Later',
-            buttonNegative: 'Cancel',
-            buttonPositive: 'OK',
-          },
-        );
-      }
-    } catch (err) {
-      console.warn(err);
-    }
-  };
-
   const handleOpenModalAddPayment = () => {
     setModalVisible(true);
     setPayment(0);
   };
 
-  const generateIdUnique = (): number => {
-    const timestamp = Date.now();
-    const random = Math.floor(Math.random() * 1000);
-    return Number(`${timestamp}${random}`);
-  };
+  const handleAddPayment = useCallback(async () => {
+    try {
+      if (refLoadingSave.current) return;
+      setLoadingSave(() => {
+        refLoadingSave.current = true;
+        return true;
+      });
+      if (payment <= 0) {
+        setLoadingSave(() => {
+          refLoadingSave.current = false;
+          return false;
+        });
+        return setAlertPayment('EL PAGO DEBE SER MAYOR A 0');
+      }
 
-  const handleAddPayment = async () => {
+      await checkGPSEnabled();
+
+      const id = uuid.v4().toString();
+
+      const data: PaymentDto = {
+        ID: id,
+        CLIENTE_ID: sale.CLIENTE_ID,
+        NOMBRE_CLIENTE: sale.CLIENTE,
+        FECHA_HORA_PAGO: dayjs().toISOString(),
+        COBRADOR: sale.NOMBRE_COBRADOR,
+        COBRADOR_ID: userData.COBRADOR_ID,
+        LAT: 0,
+        LNG: 0,
+        IMPORTE: payment,
+        DOCTO_CC_ID: 0,
+        DOCTO_CC_ACR_ID: sale.DOCTO_CC_ACR_ID,
+        FORMA_COBRO_ID: selectedFormaCobro,
+        ZONA_CLIENTE_ID: sale.ZONA_CLIENTE_ID,
+        GUARDADO_EN_MICROSIP: false,
+      };
+
+      try {
+        await sendPago(data, true, false);
+        updatePaymentCoords(data);
+        setModalVisible(false);
+      } catch (e) {
+        console.error('Error al agregar el documento: ', e);
+      }
+
+      getSaleAgain();
+      goToPayment(id);
+      setModalVisible(!modalVisible);
+    } catch (err) {
+      console.log('Error al guardar el pago', err);
+    } finally {
+      setLoadingSave(false);
+      refLoadingSave.current = true;
+    }
+  }, [
+    requestLocationPermission,
+    getAccuratePosition,
+    payment,
+    sale,
+    selectedFormaCobro,
+    sendPago,
+    getSaleAgain,
+    goToPayment,
+    userData,
+  ]);
+
+  const handleAddVisita = useCallback(() => {
     if (refLoadingSave.current) return;
     setLoadingSave(() => {
       refLoadingSave.current = true;
       return true;
     });
-    if (payment <= 0) return setAlertPayment('EL PAGO DEBE SER MAYOR A 0');
     requestLocationPermission().then(() => {
-      Geolocation.getCurrentPosition(
-        async info => {
-          const id = uuid.v4().toString();
-          const lat = info.coords.latitude;
-          const lng = info.coords.longitude;
-
-          const data: PaymentDto = {
-            ID: id,
-            CLIENTE_ID: sale.CLIENTE_ID,
-            NOMBRE_CLIENTE: sale.CLIENTE,
-            FECHA_HORA_PAGO: dayjs().toISOString(),
-            COBRADOR: sale.NOMBRE_COBRADOR,
-            COBRADOR_ID: userData.COBRADOR_ID,
-            LAT: lat,
-            LNG: lng,
-            IMPORTE: payment,
-            DOCTO_CC_ID: 0,
-            DOCTO_CC_ACR_ID: sale.DOCTO_CC_ACR_ID,
-            FORMA_COBRO_ID: selectedFormaCobro,
-            ZONA_CLIENTE_ID: sale.ZONA_CLIENTE_ID,
-            GUARDADO_EN_MICROSIP: false,
-          };
-
-          try {
-            await sendPago(data);
-            setModalVisible(false);
-          } catch (e) {
-            console.error('Error adding document: ', e);
-          }
-
-          getSaleAgain();
-          goToPayment(id);
-          setModalVisible(!modalVisible);
-          setLoadingSave(false);
-        },
-        err => {
-          Alert.alert(
-            'Error al obtener la ubicación',
-            'No se ha podido obtener la ubicación actual, por lo que el PAGO NO SE HA GUARDADO',
-          );
-          console.log('Error al obtener la ubicación:', err);
-          setLoadingSave(false);
-        },
-        {enableHighAccuracy: true, timeout: 15000, maximumAge: 20000},
-      );
-    });
-  };
-
-  const handleAddVisita = () => {
-    if (refLoadingSave.current) return;
-    setLoadingSave(() => {
-      refLoadingSave.current = true;
-      return true;
-    });
-    requestLocationPermission().then(() => {
-      Geolocation.getCurrentPosition(
-        async info => {
+      getAccuratePosition()
+        .then(async info => {
           const lat = info.coords.latitude;
           const lng = info.coords.longitude;
           const data: VisitaLocal = {
             CLIENTE_ID: sale.CLIENTE_ID,
-            FECHA: dayjs().format('YYYY-MM-DD HH:mm:ss'),
+            FECHA: dayjs().toISOString(),
             COBRADOR: sale.NOMBRE_COBRADOR,
             COBRADOR_ID: userData.COBRADOR_ID,
             LAT: lat,
@@ -254,142 +287,106 @@ const SaleDetails = () => {
               true,
               selectedNotaVisita,
               sale.DOCTO_CC_ACR_ID,
+              false,
             );
+            updateVisitaCoords(data);
             setModalVisitaVisible(false);
           } catch (e) {
             console.error('Error adding document: ', e);
           }
-          setModalVisitaVisible(!modalVisitaVisible);
-        },
-        err => {
+          Alert.alert(
+            'Imprimir ticket de visita',
+            '¿Desea imprimir un ticket de visita?',
+            [
+              {text: 'Imprimir', onPress: () => goToNotice(saleId)},
+              {
+                text: 'Cerrar', // Texto del botón
+                onPress: () => {},
+              },
+            ],
+            {cancelable: false},
+          );
+          setModalVisitaVisible(false);
+        })
+        .catch(err => {
           Alert.alert(
             'Error al obtener la ubicación',
-            'No se ha podido obtener la ubicación actual, por lo que la visita NO SE HA GUARDADO',
+            'No se ha podido obtener la ubicación actual, por lo que LA VISITA NO SE HA GUARDADO',
           );
           console.log('Error al obtener la ubicación:', err);
-        },
-        {enableHighAccuracy: true, timeout: 15000, maximumAge: 20000},
-      );
+          setLoadingSave(false);
+          refLoadingSave.current = false;
+        });
     });
     setLoadingSave(false);
-  };
+    refLoadingSave.current = false;
+  }, [
+    requestLocationPermission,
+    getAccuratePosition,
+    sale,
+    notaVisita,
+    selectedNotaVisita,
+    selectedFormaCobro,
+    userData,
+  ]);
 
   const handleOpenCondonacionModal = () => {
     setPayment(sale.SALDO_REST);
     setModalCondonacionVisible(true);
   };
 
-  const handleAddCondonacion = () => {
+  const handleAddCondonacion = useCallback(async () => {
     if (refLoadingSave.current) return;
     setLoadingSave(() => {
       refLoadingSave.current = true;
       return true;
     });
-    requestLocationPermission().then(() => {
-      Geolocation.getCurrentPosition(
-        async info => {
-          const lat = info.coords.latitude;
-          const lng = info.coords.longitude;
 
-          const data: PaymentDto = {
-            ID: uuid.v4().toString(),
-            CLIENTE_ID: sale.CLIENTE_ID,
-            NOMBRE_CLIENTE: sale.CLIENTE,
-            FECHA_HORA_PAGO: dayjs().toISOString(),
-            COBRADOR: sale.NOMBRE_COBRADOR,
-            COBRADOR_ID: userData.COBRADOR_ID,
-            LAT: lat,
-            LNG: lng,
-            IMPORTE: payment,
-            DOCTO_CC_ID: 0,
-            DOCTO_CC_ACR_ID: sale.DOCTO_CC_ACR_ID,
-            FORMA_COBRO_ID: CONDONACION_ID,
-            ZONA_CLIENTE_ID: sale.ZONA_CLIENTE_ID,
-            GUARDADO_EN_MICROSIP: false,
-          };
-          try {
-            const dbSqlite = await openDatabase();
-            const result = dbSqlite.executeSql(
-              `
-            INSERT INTO pagos
-              (
-                ID,
-                CLIENTE_ID,
-                NOMBRE_CLIENTE,
-                COBRADOR,
-                COBRADOR_ID,
-                DOCTO_CC_ID,
-                DOCTO_CC_ACR_ID,
-                FECHA_HORA_PAGO,
-                FORMA_COBRO_ID,
-                ZONA_CLIENTE_ID,
-                IMPORTE,
-                LAT,
-                LNG,
-                GUARDADO_EN_MICROSIP
-              ) VALUES (
-                '${data.ID}',
-                ${data.CLIENTE_ID},
-                '${data.NOMBRE_CLIENTE}',
-                '${data.COBRADOR}',
-                ${data.COBRADOR_ID},
-                ${data.DOCTO_CC_ID},
-                ${data.DOCTO_CC_ACR_ID},
-                '${dayjs(data.FECHA_HORA_PAGO).toISOString()}',
-                ${data.FORMA_COBRO_ID},
-                ${data.ZONA_CLIENTE_ID},
-                ${data.IMPORTE},
-                ${data.LAT},
-                ${data.LNG},
-                ${data.GUARDADO_EN_MICROSIP}
-                )
-                `,
-            );
-            console.log('result', result);
+    if (payment <= 0) {
+      setLoadingSave(() => {
+        refLoadingSave.current = false;
+        return false;
+      });
+      return setAlertPayment('EL PAGO DEBE SER MAYOR A 0');
+    }
 
-            const query = `
-            UPDATE ventas
-            SET
-              SALDO_REST = SALDO_REST - ${payment},
-              ESTADO_COBRANZA = 'PAGADO'
-            WHERE DOCTO_CC_ID = ${sale.DOCTO_CC_ID}
-          `;
-
-            const resultUpdate = dbSqlite.executeSql(query);
-            console.log('resultUpdate', resultUpdate);
-
-            const response = await api.post<{err: ''; body: string}>(
-              'ventas/add-pago',
-              {pago: data},
-              {
-                timeout: 3000,
-              },
-            );
-            console.log('response', response.data);
-
-            const queryUpdateGuardado = `
-            UPDATE pagos
-            SET GUARDADO_EN_MICROSIP = 1
-            WHERE ID = '${data.ID}'
-          `;
-            const resultUpdateGuardado =
-              dbSqlite.executeSql(queryUpdateGuardado);
-            console.log('resultUpdateGuardado', resultUpdateGuardado);
-
-            setModalCondonacionVisible(false);
-          } catch (e) {
-            console.error('Error adding document: ', e);
-          }
-          getSaleAgain();
-          goToPayment(data.ID);
-          setModalCondonacionVisible(!modalCondonacionVisible);
-        },
-        err => console.log(err),
-        {enableHighAccuracy: true, timeout: 15000, maximumAge: 20000},
-      );
-    });
+    const data: PaymentDto = {
+      ID: uuid.v4().toString(),
+      CLIENTE_ID: sale.CLIENTE_ID,
+      NOMBRE_CLIENTE: sale.CLIENTE,
+      FECHA_HORA_PAGO: dayjs().toISOString(),
+      COBRADOR: sale.NOMBRE_COBRADOR,
+      COBRADOR_ID: userData.COBRADOR_ID,
+      LAT: 0,
+      LNG: 0,
+      IMPORTE: payment,
+      DOCTO_CC_ID: 0,
+      DOCTO_CC_ACR_ID: sale.DOCTO_CC_ACR_ID,
+      FORMA_COBRO_ID: CONDONACION_ID,
+      ZONA_CLIENTE_ID: sale.ZONA_CLIENTE_ID,
+      GUARDADO_EN_MICROSIP: false,
+    };
+    try {
+      await sendPago(data, true, false);
+      updatePaymentCoords(data);
+      setModalCondonacionVisible(false);
+    } catch (e) {
+      console.error('Error adding document: ', e);
+    }
+    getSaleAgain();
+    goToPayment(data.ID);
+    setModalCondonacionVisible(!modalCondonacionVisible);
     setLoadingSave(false);
-  };
+  }, [
+    refLoadingSave,
+    requestLocationPermission,
+    getAccuratePosition,
+    sale,
+    payment,
+    userData,
+    goToPayment,
+    getSaleAgain,
+  ]);
 
   const handleCloseCondonacionModal = () => {
     setModalCondonacionVisible(!modalCondonacionVisible);
@@ -408,28 +405,37 @@ const SaleDetails = () => {
     setPayment(0);
   };
 
-  const handleInputPaymentChange = (text: string) => {
-    if (text === '') return setPayment(0);
-    if (parseInt(text) < 0) return setPayment(0);
-    if (parseInt(text) > sale.SALDO_REST) return setPayment(sale.SALDO_REST);
-    if (parseInt(text) > 0 && parseInt(text) < sale.PARCIALIDAD) {
-      setAlertPayment('EL PAGO ES MENOR A LA PARCIALIDAD ACORDADA');
-    } else {
-      setAlertPayment('');
-      console.log('alertPayment', alertPayment);
-    }
-    setPayment(parseInt(text));
-  };
-
-  const goToPayment = (paymentId: string) => {
-    navigation.navigate('Payment', {paymentId: paymentId, saleId: saleId});
-  };
-
-  const paymentsOrder = sale.pagos.sort(
-    (a, b) =>
-      new Date(b.FECHA_HORA_PAGO).getTime() -
-      new Date(a.FECHA_HORA_PAGO).getTime(),
+  const handleInputPaymentChange = useCallback(
+    (text: string) => {
+      if (text === '') return setPayment(0);
+      if (parseInt(text) < 0) return setPayment(0);
+      if (parseInt(text) > sale.SALDO_REST) return setPayment(sale.SALDO_REST);
+      if (parseInt(text) > 0 && parseInt(text) < sale.PARCIALIDAD) {
+        setAlertPayment('EL PAGO ES MENOR A LA PARCIALIDAD ACORDADA');
+      } else {
+        setAlertPayment('');
+        console.log('alertPayment', alertPayment);
+      }
+      setPayment(parseInt(text));
+    },
+    [sale.SALDO_REST, sale.PARCIALIDAD],
   );
+
+  function goToPayment(paymentId: string) {
+    navigation.navigate('Payment', {paymentId: paymentId, saleId: saleId});
+  }
+
+  const goToNotice = (saleId: number) => {
+    navigation.navigate('Notice', {saleId: saleId});
+  };
+
+  const paymentsOrder = useMemo(() => {
+    return [...sale.pagos].sort(
+      (a, b) =>
+        new Date(b.FECHA_HORA_PAGO).getTime() -
+        new Date(a.FECHA_HORA_PAGO).getTime(),
+    );
+  }, [sale.pagos]);
 
   const cantsRepeat = useMemo(() => {
     return sale.pagos.reduce((acc: number[], pago) => {
@@ -450,23 +456,67 @@ const SaleDetails = () => {
 
   const totalAbonado = sale.PRECIO_TOTAL - sale.SALDO_REST;
   const tiempoTranscurrido =
-    dayjs().diff(dayjs(sale.FECHA).endOf('day'), 'month') + 1;
+    dayjs().subtract(5, 'day').diff(dayjs(sale.FECHA).endOf('day'), 'month') +
+    1;
   const interesesPorMes = {
-    corto: (sale.MONTO_A_CORTO_PLAZO - sale.PRECIO_DE_CONTADO) / 3,
+    corto: (sale.MONTO_A_CORTO_PLAZO - sale.PRECIO_DE_CONTADO) / 4,
     largo: (sale.PRECIO_TOTAL - sale.MONTO_A_CORTO_PLAZO) / 7,
   };
-  const saldoALiquidarHoy =
-    (tiempoTranscurrido <= 1
-      ? sale.PRECIO_DE_CONTADO
-      : tiempoTranscurrido <= 3
-      ? sale.PRECIO_DE_CONTADO + tiempoTranscurrido * interesesPorMes.corto
-      : [4, 5].includes(tiempoTranscurrido)
-      ? sale.MONTO_A_CORTO_PLAZO
-      : tiempoTranscurrido <= 12
-      ? sale.MONTO_A_CORTO_PLAZO +
-        (tiempoTranscurrido - 4) * interesesPorMes.largo
-      : sale.PRECIO_TOTAL) - totalAbonado;
+
+  const saldoALiquidarHoy = useMemo(() => {
+    return (
+      (tiempoTranscurrido <= 1
+        ? sale.PRECIO_DE_CONTADO
+        : tiempoTranscurrido <= 3
+        ? sale.PRECIO_DE_CONTADO + tiempoTranscurrido * interesesPorMes.corto
+        : [4, 5].includes(tiempoTranscurrido)
+        ? sale.MONTO_A_CORTO_PLAZO
+        : tiempoTranscurrido <= 12
+        ? sale.MONTO_A_CORTO_PLAZO +
+          (tiempoTranscurrido - 4) * interesesPorMes.largo
+        : sale.PRECIO_TOTAL) - totalAbonado
+    );
+  }, [
+    tiempoTranscurrido,
+    sale.PRECIO_DE_CONTADO,
+    sale.MONTO_A_CORTO_PLAZO,
+    sale.PRECIO_TOTAL,
+    interesesPorMes.corto,
+    interesesPorMes.largo,
+    totalAbonado,
+  ]);
+
   // console.log({tiempoTranscurrido, interesesPorMes, saldoALiquidarHoy});
+
+  const statusPagosAtrasados =
+    porcentajeParcialBySale.NUM_PAGOS_ATRASADOS < 1
+      ? 'SUCCESS'
+      : porcentajeParcialBySale.NUM_PAGOS_ATRASADOS < 5
+      ? 'WARNING'
+      : 'DANGER';
+  const badgeAtrasadosStyle =
+    statusPagosAtrasados === 'SUCCESS'
+      ? saleDetailsStyles.badgeSuccess
+      : statusPagosAtrasados === 'WARNING'
+      ? saleDetailsStyles.badgeWarning
+      : saleDetailsStyles.badgeDanger;
+  const badgeTextAtrasadosStyle =
+    statusPagosAtrasados === 'SUCCESS'
+      ? saleDetailsStyles.badgeSuccessText
+      : statusPagosAtrasados === 'WARNING'
+      ? saleDetailsStyles.badgeWarningText
+      : saleDetailsStyles.badgeDangerText;
+
+  const handlePressPayment = useCallback(
+    (item: PagoServer, index: number) => {
+      dayjs(item.FECHA_HORA_PAGO).isAfter(
+        userData.FECHA_CARGA_INICIAL.toDate(),
+      ) && index === 0
+        ? goToPayment(item.ID)
+        : ToastAndroid.show('No puedes abrir este pago', ToastAndroid.SHORT);
+    },
+    [userData.FECHA_CARGA_INICIAL, goToPayment],
+  );
 
   if (loading) {
     return (
@@ -481,7 +531,7 @@ const SaleDetails = () => {
       <View style={saleDetailsStyles.header}>
         <Pressable onPress={handleOpenMap}>
           <Image
-            source={require('../../../../../assets/map-icon.png')}
+            source={require('../../../../../assets/map.png')}
             style={saleDetailsStyles.mapImg}
           />
         </Pressable>
@@ -497,6 +547,7 @@ const SaleDetails = () => {
         style={saleDetailsStyles.modalMap}
         onRequestClose={() => {
           setModalMapVisible(!modalMapVisible);
+          setShowAllLocations(false);
         }}>
         <View style={saleDetailsStyles.mapContainer}>
           <MapView
@@ -511,12 +562,35 @@ const SaleDetails = () => {
               latitudeDelta: 0.0222,
               longitudeDelta: 0.01,
             }}>
-            <Marker
-              coordinate={{latitude: lat, longitude: lng}}
-              title={sale.CLIENTE}
-              description={sale.CALLE}
-            />
+            {showAllLocations
+              ? sale.pagos.map(pago => (
+                  <Marker
+                    key={pago.ID}
+                    coordinate={{
+                      latitude: Number(pago.LAT),
+                      longitude: Number(pago.LNG),
+                    }}
+                  />
+                ))
+              : centroids.map(payment => (
+                  <Marker
+                    key={payment.LAT + payment.LNG}
+                    coordinate={{
+                      latitude: Number(payment.LAT),
+                      longitude: Number(payment.LNG),
+                    }}
+                    title={dayjs(sale.FECHA).format('DD/MM/YYYY')}
+                    description={sale.CALLE}
+                  />
+                ))}
           </MapView>
+          <Pressable
+            style={saleDetailsStyles.addPayModalButton}
+            onPress={() => setShowAllLocations(value => !value)}>
+            <Text style={{color: 'white'}}>
+              {showAllLocations ? 'Quitar' : 'Mostrar'} todas las ubicaciones
+            </Text>
+          </Pressable>
           <Pressable
             style={saleDetailsStyles.closeMap}
             onPress={() => setModalMapVisible(false)}>
@@ -558,7 +632,7 @@ const SaleDetails = () => {
                 <Icon
                   name="calendar"
                   size={30}
-                  color="black"
+                  color="green"
                   onPress={() => openCalendar()}
                 />
               </TouchableOpacity>
@@ -570,7 +644,7 @@ const SaleDetails = () => {
                 <Icon
                   name="calculator"
                   size={30}
-                  color="black"
+                  color="green"
                   onPress={() => openCalculator()}
                 />
               </TouchableOpacity>
@@ -609,83 +683,120 @@ const SaleDetails = () => {
             </View>
           </View>
         </View>
-        <View style={saleDetailsStyles.personalInfoItem}>
-          <Text style={saleDetailsStyles.textTertiary}>Total venta:</Text>
-          <Text style={saleDetailsStyles.textSecondary}>
-            ${sale.PRECIO_TOTAL}
-          </Text>
+        <View style={saleDetailsStyles.rowHalf}>
+          <View style={saleDetailsStyles.rowItem}>
+            <Text style={saleDetailsStyles.textTertiary}>Total venta:</Text>
+            <Text style={saleDetailsStyles.textSecondary}>
+              ${sale.PRECIO_TOTAL}
+            </Text>
+          </View>
+          <View style={saleDetailsStyles.rowItem}>
+            <Text style={saleDetailsStyles.textTertiary}>
+              Frecuencia de pago:
+            </Text>
+            <Text style={saleDetailsStyles.textSecondary}>
+              {sale.FREC_PAGO}
+            </Text>
+          </View>
         </View>
-        <View style={saleDetailsStyles.personalInfoItem}>
-          <Text style={saleDetailsStyles.textTertiary}>
-            Frecuencia de pago:
-          </Text>
-          <Text style={saleDetailsStyles.textSecondary}>{sale.FREC_PAGO}</Text>
+        <View style={saleDetailsStyles.rowHalf}>
+          <View style={saleDetailsStyles.rowItem}>
+            <Text style={saleDetailsStyles.textTertiary}>Parcialidad:</Text>
+            <Text style={saleDetailsStyles.textSecondary}>
+              ${sale.PARCIALIDAD}
+            </Text>
+          </View>
+          <View style={saleDetailsStyles.rowItem}>
+            <Text style={saleDetailsStyles.textTertiary}>Enganche:</Text>
+            <Text style={saleDetailsStyles.textSecondary}>
+              ${sale.ENGANCHE}
+            </Text>
+          </View>
         </View>
-        <View style={saleDetailsStyles.personalInfoItem}>
-          <Text style={saleDetailsStyles.textTertiary}>Parcialidad:</Text>
-          <Text style={saleDetailsStyles.textSecondary}>
-            ${sale.PARCIALIDAD}
-          </Text>
-        </View>
-        <View style={saleDetailsStyles.personalInfoItem}>
-          <Text style={saleDetailsStyles.textTertiary}>Enganche:</Text>
-          <Text style={saleDetailsStyles.textSecondary}>${sale.ENGANCHE}</Text>
-        </View>
-        <View style={saleDetailsStyles.personalInfoItem}>
-          <Text style={saleDetailsStyles.textTertiary}>Limite de crédito:</Text>
-          <Text style={saleDetailsStyles.textSecondary}>
-            ${sale.LIMITE_CREDITO}
-          </Text>
-        </View>
-        <View style={saleDetailsStyles.personalInfoItem}>
-          <Text style={saleDetailsStyles.textTertiary}>Precio de contado:</Text>
-          <Text style={saleDetailsStyles.textSecondary}>
-            ${sale.PRECIO_DE_CONTADO}
-          </Text>
+        <View style={saleDetailsStyles.rowHalf}>
+          <View style={saleDetailsStyles.rowItem}>
+            <Text style={saleDetailsStyles.textTertiary}>
+              Limite de crédito:
+            </Text>
+            <Text style={saleDetailsStyles.textSecondary}>
+              ${sale.LIMITE_CREDITO}
+            </Text>
+          </View>
+          <View style={saleDetailsStyles.rowItem}>
+            <Text style={saleDetailsStyles.textTertiary}>
+              Precio de contado:
+            </Text>
+            <Text style={saleDetailsStyles.textSecondary}>
+              ${sale.PRECIO_DE_CONTADO}
+            </Text>
+          </View>
         </View>
 
-        <View style={saleDetailsStyles.personalInfoItem}>
-          <Text style={saleDetailsStyles.textTertiary}>
-            Precio a {sale.TIEMPO_A_CORTO_PLAZOMESES} mes(es):
-          </Text>
-          <Text style={saleDetailsStyles.textSecondary}>
-            ${sale.MONTO_A_CORTO_PLAZO}
-          </Text>
-        </View>
-        <View style={saleDetailsStyles.personalInfoItem}>
-          <Text style={saleDetailsStyles.textTertiary}>Zona:</Text>
-          <Text style={saleDetailsStyles.textSecondary}>
-            {sale.ZONA_NOMBRE}
-          </Text>
+        <View style={saleDetailsStyles.rowHalf}>
+          <View style={saleDetailsStyles.rowItem}>
+            <Text style={saleDetailsStyles.textTertiary}>
+              Precio a {sale.TIEMPO_A_CORTO_PLAZOMESES} mes(es):
+            </Text>
+            <Text style={saleDetailsStyles.textSecondary}>
+              ${sale.MONTO_A_CORTO_PLAZO}
+            </Text>
+          </View>
+          <View style={saleDetailsStyles.rowItem}>
+            <Text style={saleDetailsStyles.textTertiary}>Zona:</Text>
+            <Text style={saleDetailsStyles.textSecondary}>
+              {sale.ZONA_NOMBRE}
+            </Text>
+          </View>
         </View>
         <View style={saleDetailsStyles.personalInfoItem}>
           <Text style={saleDetailsStyles.textTertiary}>Notas:</Text>
           <Text style={saleDetailsStyles.textSecondary}>{sale.NOTAS}</Text>
         </View>
+        <View style={saleDetailsStyles.personalInfoItem}>
+          <Text style={saleDetailsStyles.textTertiary}>Vendedores:</Text>
+          <Text style={saleDetailsStyles.textSecondary}>{sale.VENDEDOR_1}</Text>
+          {sale.VENDEDOR_2 && (
+            <Text style={saleDetailsStyles.textSecondary}>
+              {sale.VENDEDOR_2}
+            </Text>
+          )}
+          {sale.VENDEDOR_3 && (
+            <Text style={saleDetailsStyles.textSecondary}>
+              {sale.VENDEDOR_3}
+            </Text>
+          )}
+        </View>
 
-        {sale.PRECIO_DE_CONTADO !== 0 && (
-          <View style={saleDetailsStyles.pricingCard}>
-            <Text style={saleDetailsStyles.pricingCardText}>
-              Hoy liquida con
-            </Text>
-            <Text style={saleDetailsStyles.pricingCardTitle}>
-              ${saldoALiquidarHoy.toFixed(0)}
-            </Text>
-            <Text style={saleDetailsStyles.pricingCardSubtitle}>
-              Precio{' '}
-              {tiempoTranscurrido == 1
-                ? 'de contado'
-                : 'a ' + tiempoTranscurrido + ' meses'}
-            </Text>
-            <View style={saleDetailsStyles.divider}></View>
-            <Text style={saleDetailsStyles.pricingCardSecondaryText}>
-              Valido hasta{' '}
-              {dayjs(sale.FECHA)
-                .add(tiempoTranscurrido, 'month')
-                .format('DD/MM/YYYY')}
-            </Text>
-          </View>
-        )}
+        {sale.PRECIO_DE_CONTADO !== 0 &&
+          Number.isInteger(sale.PRECIO_DE_CONTADO) &&
+          sale.SALDO_REST !== 0 && (
+            <View>
+              <ImageBackground
+                style={saleDetailsStyles.pricingCard}
+                source={require('../../../../../assets/bg-white-gradient.png')}>
+                <Text style={saleDetailsStyles.pricingCardText}>
+                  Hoy liquida con
+                </Text>
+                <Text style={saleDetailsStyles.pricingCardTitle}>
+                  ${saldoALiquidarHoy.toFixed(0)}
+                </Text>
+                <Text style={saleDetailsStyles.pricingCardSubtitle}>
+                  Precio{' '}
+                  {tiempoTranscurrido == 1
+                    ? 'de contado'
+                    : 'a ' + tiempoTranscurrido + ' meses'}
+                </Text>
+                <View style={saleDetailsStyles.divider}></View>
+                <Text style={saleDetailsStyles.pricingCardSecondaryText}>
+                  Valido hasta{' '}
+                  {dayjs(sale.FECHA)
+                    .add(14, 'day')
+                    .add(tiempoTranscurrido, 'month')
+                    .format('DD/MM/YYYY')}
+                </Text>
+              </ImageBackground>
+            </View>
+          )}
 
         <Text style={saleDetailsStyles.subtitle}>Productos</Text>
         {productos.map((producto: Producto) => (
@@ -695,7 +806,7 @@ const SaleDetails = () => {
                 saleDetailsStyles.textSecondary,
                 saleDetailsStyles.productItemName,
               ]}>
-              {producto.ARTICULO}
+              {producto.CANTIDAD} - {producto.ARTICULO}
             </Text>
             <Text
               style={[
@@ -707,6 +818,30 @@ const SaleDetails = () => {
           </View>
         ))}
       </View>
+
+      {otherSales.length > 0 && (
+        <>
+          <Text style={[saleDetailsStyles.subtitle, {marginBottom: 10}]}>
+            Ventas del Mismo Cliente
+          </Text>
+          <View style={{gap: 10, marginHorizontal: 20, marginBottom: 20}}>
+            {otherSales.map(sale => {
+              return (
+                <Card
+                  sale={sale}
+                  key={sale.DOCTO_CC_ID}
+                  onPress={() =>
+                    navigation.navigate('SaleDetails', {
+                      saleId: sale.DOCTO_CC_ID,
+                    })
+                  }
+                />
+              );
+            })}
+          </View>
+        </>
+      )}
+
       <View style={saleDetailsStyles.results}>
         <View style={saleDetailsStyles.resultItem}>
           <View style={saleDetailsStyles.resultItemIconContainer}>
@@ -733,21 +868,36 @@ const SaleDetails = () => {
           </View>
         </View>
       </View>
+
       <View style={saleDetailsStyles.saleInfo}>
-        <View style={saleDetailsStyles.personalInfoItem}>
-          <Text style={saleDetailsStyles.textTertiary}>Vendedores:</Text>
-          <Text style={saleDetailsStyles.textSecondary}>{sale.VENDEDOR_1}</Text>
-          {sale.VENDEDOR_2 && (
-            <Text style={saleDetailsStyles.textSecondary}>
-              {sale.VENDEDOR_2}
+        {porcentajeParcialBySale.NUM_PAGOS_ATRASADOS <= 0.9999 ? (
+          <View
+            style={[saleDetailsStyles.badge, saleDetailsStyles.badgeSuccess1]}>
+            <Text style={saleDetailsStyles.badgeSuccessText1}>
+              NO TIENE ATRASOS
             </Text>
-          )}
-          {sale.VENDEDOR_3 && (
-            <Text style={saleDetailsStyles.textSecondary}>
-              {sale.VENDEDOR_3}
+          </View>
+        ) : dayjs().diff(dayjs(sale.FECHA), 'year') >= 1 ? (
+          <View style={[saleDetailsStyles.badge, badgeAtrasadosStyle]}>
+            <Text style={badgeTextAtrasadosStyle}>CTA. VENCIDA</Text>
+          </View>
+        ) : (
+          <View style={[saleDetailsStyles.badge, badgeAtrasadosStyle]}>
+            <Text style={badgeTextAtrasadosStyle}>PAGOS ATRASADOS: </Text>
+            <Text style={badgeTextAtrasadosStyle}>
+              {porcentajeParcialBySale.NUM_PAGOS_ATRASADOS.toFixed(0)}
             </Text>
-          )}
-        </View>
+          </View>
+        )}
+        {paymentsOrder[0] && (
+          <View style={[saleDetailsStyles.badge, saleDetailsStyles.badgeBase]}>
+            <Text style={saleDetailsStyles.badgeTextBase}>ÚLTIMO PAGO: </Text>
+            <Text
+              style={[saleDetailsStyles.badgeTextBase, {fontWeight: '600'}]}>
+              {dayjs(paymentsOrder[0].FECHA_HORA_PAGO).fromNow().toUpperCase()}
+            </Text>
+          </View>
+        )}
       </View>
       <Modal
         animationType="slide"
@@ -767,19 +917,38 @@ const SaleDetails = () => {
               value={payment.toString()}
             />
             <View style={saleDetailsStyles.paySugerencias}>
-              <Pressable style={saleDetailsStyles.badgeSuccess}>
-                <Text
-                  style={saleDetailsStyles.badgeSuccessText}
-                  onPress={() =>
-                    handleInputPaymentChange(sale.PARCIALIDAD.toString())
-                  }>
-                  {sale.PARCIALIDAD}
-                </Text>
-              </Pressable>
-              {cantsRepeat.map(cant => (
-                <Pressable style={saleDetailsStyles.badgeSuccess} key={cant}>
+              {!cantsRepeat.includes(sale.PARCIALIDAD) && (
+                <Pressable
+                  style={[
+                    saleDetailsStyles.badgeSuccess,
+                    sale.PARCIALIDAD === payment && {
+                      backgroundColor: '#2e7d32',
+                    },
+                  ]}>
                   <Text
-                    style={saleDetailsStyles.badgeSuccessText}
+                    style={[
+                      saleDetailsStyles.badgeSuccessText,
+                      sale.PARCIALIDAD === payment && {color: 'white'},
+                    ]}
+                    onPress={() =>
+                      handleInputPaymentChange(sale.PARCIALIDAD.toString())
+                    }>
+                    {sale.PARCIALIDAD}
+                  </Text>
+                </Pressable>
+              )}
+              {cantsRepeat.map(cant => (
+                <Pressable
+                  style={[
+                    saleDetailsStyles.badgeSuccess,
+                    cant === payment && {backgroundColor: '#2e7d32'},
+                  ]}
+                  key={cant}>
+                  <Text
+                    style={[
+                      saleDetailsStyles.badgeSuccessText,
+                      cant === payment && {color: 'white'},
+                    ]}
                     onPress={() => handleInputPaymentChange(cant.toString())}>
                     {cant}
                   </Text>
@@ -850,8 +1019,32 @@ const SaleDetails = () => {
       <Pressable
         style={[saleDetailsStyles.addPaymentButton]}
         onPress={() => handleOpenModalAddPayment()}>
-        <Text style={saleDetailsStyles.addPaymentButtonText}>Agregar Pago</Text>
+        <Text style={saleDetailsStyles.addPaymentButtonText}>AGREGAR PAGO</Text>
+        <Icon6 name="money-bills" size={40} color="white" />
       </Pressable>
+      <View
+        style={{
+          flexDirection: 'row',
+          justifyContent: 'space-between',
+          marginHorizontal: 20,
+        }}>
+        <Pressable
+          style={[saleDetailsStyles.addCondonacionButton]}
+          onPress={() => handleOpenCondonacionModal()}>
+          <Text style={saleDetailsStyles.addPayModalCloseText}>
+            AGREGAR CONDONACIÓN
+          </Text>
+          <Icon6 name="file-circle-check" size={30} color="white" />
+        </Pressable>
+        <Pressable
+          style={[saleDetailsStyles.addVisitaButton]}
+          onPress={() => setModalVisitaVisible(true)}>
+          <Text style={saleDetailsStyles.addPayModalCloseText}>
+            AGREGAR VISITA
+          </Text>
+          <Icon6 name="house" size={30} color="white" />
+        </Pressable>
+      </View>
       <Modal
         animationType="slide"
         transparent={true}
@@ -937,13 +1130,6 @@ const SaleDetails = () => {
           </View>
         </View>
       </Modal>
-      <Pressable
-        style={[saleDetailsStyles.addVisitaButton]}
-        onPress={() => setModalVisitaVisible(true)}>
-        <Text style={saleDetailsStyles.addPayModalCloseText}>
-          Agregar Visita
-        </Text>
-      </Pressable>
       <Modal
         animationType="slide"
         transparent={true}
@@ -963,6 +1149,9 @@ const SaleDetails = () => {
               onChangeText={text => handleInputPaymentChange(text)}
               value={payment.toString()}
             />
+            {alertPayment !== '' && (
+              <Text style={saleDetailsStyles.alertPayment}>{alertPayment}</Text>
+            )}
             <Pressable
               style={[
                 saleDetailsStyles.addPayModalButton,
@@ -987,22 +1176,24 @@ const SaleDetails = () => {
           </View>
         </View>
       </Modal>
-      <Pressable
-        style={[saleDetailsStyles.addCondonacionButton]}
-        onPress={() => handleOpenCondonacionModal()}>
-        <Text style={saleDetailsStyles.addPayModalCloseText}>
-          Agregar Condonación
-        </Text>
-      </Pressable>
+
       <View style={saleDetailsStyles.payments}>
-        <Text style={saleDetailsStyles.subtitle}>Historial de pagos</Text>
-        {paymentsOrder.map((payment: PagoServer) => (
-          <PaymentItem
-            key={payment.ID}
-            payment={payment}
-            onPress={() => goToPayment(payment.ID)}
-          />
-        ))}
+        <Text style={[saleDetailsStyles.subtitle, {marginBottom: 20}]}>
+          Historial de pagos
+        </Text>
+        <FlatList
+          data={paymentsOrder}
+          keyExtractor={item => item.ID}
+          ItemSeparatorComponent={() => <View style={{height: 5}} />}
+          scrollEnabled={false}
+          renderItem={({item, index}) => (
+            <PaymentItem
+              key={item.ID}
+              payment={item}
+              onPress={() => handlePressPayment(item, index)}
+            />
+          )}
+        />
       </View>
     </ScrollView>
   );
@@ -1031,31 +1222,75 @@ export interface PaymentWithCliente extends Payment {
   CLIENTE: string;
 }
 
-const PaymentItem = ({
-  payment,
-  onPress,
-}: {
-  payment: PagoServer;
-  onPress: Function;
-}) => {
-  return (
-    <Pressable style={saleDetailsStyles.paymentItem} onPress={() => onPress()}>
-      <Text style={saleDetailsStyles.textSecondary}>{payment.COBRADOR}</Text>
-      <Text style={saleDetailsStyles.textTertiary}>
-        {dayjs(payment.FECHA_HORA_PAGO).format('DD/MM/YYYY - hh:mm a')}
-      </Text>
-      <Text style={saleDetailsStyles.textSecondary}>${payment.IMPORTE}</Text>
-      <Text style={saleDetailsStyles.textTertiary}>
-        {payment.FORMA_COBRO_ID === PAGO_EN_EFECTIVO_ID && 'EFECTIVO'}
-        {payment.FORMA_COBRO_ID === PAGO_CON_TRANSFERENCIA_ID &&
-          'TRANSFERENCIA'}
-        {payment.FORMA_COBRO_ID === CONDONACION_ID && 'CONDONACIÓN'}
-      </Text>
-      <Text style={saleDetailsStyles.textSecondary}>
-        {payment.GUARDADO_EN_MICROSIP ? 'Enviado' : 'No enviado'}
-      </Text>
-    </Pressable>
-  );
-};
+const PaymentItem = memo(
+  ({payment, onPress}: {payment: PagoServer; onPress: Function}) => {
+    const {userData} = useContext(AuthContext);
+    return (
+      <Pressable
+        style={{borderRadius: 20, overflow: 'hidden'}}
+        onPress={() => onPress()}>
+        <ImageBackground
+          style={saleDetailsStyles.paymentItem}
+          source={
+            dayjs(userData.FECHA_CARGA_INICIAL.toDate()).isBefore(
+              dayjs(payment.FECHA_HORA_PAGO),
+            )
+              ? require('../../../../../assets/bg-gradient-green.png')
+              : dayjs(payment.FECHA_HORA_PAGO).month() % 2 === 0
+              ? require('../../../../../assets/bg-white-gradient.png')
+              : require('../../../../../assets/bg-gradient-blue-light.png')
+          }
+          resizeMode="cover">
+          <View style={{width: '80%'}}>
+            <Text
+              style={[
+                saleDetailsStyles.textSecondary,
+                saleDetailsStyles.colorTextWhite,
+              ]}>
+              {payment.COBRADOR.slice(0, 20)}
+              {payment.COBRADOR.length > 20 && '...'}
+            </Text>
+            <Text
+              style={[
+                saleDetailsStyles.textTertiary,
+                saleDetailsStyles.colorTextWhite,
+              ]}>
+              {dayjs(payment.FECHA_HORA_PAGO)
+                .format('dddd DD/MM/YYYY - hh:mm a')
+                .toUpperCase()}
+            </Text>
+            <Text
+              style={[
+                saleDetailsStyles.textTertiary,
+                saleDetailsStyles.colorTextWhite,
+              ]}>
+              {payment.FORMA_COBRO_ID === PAGO_EN_EFECTIVO_ID && 'EFECTIVO'}
+              {payment.FORMA_COBRO_ID === PAGO_CON_TRANSFERENCIA_ID &&
+                'TRANSFERENCIA'}
+              {payment.FORMA_COBRO_ID === CONDONACION_ID && 'CONDONACIÓN'}
+            </Text>
+          </View>
+          <View>
+            <Text
+              style={[
+                saleDetailsStyles.textSecondary,
+                saleDetailsStyles.colorTextWhite,
+                {fontSize: 24},
+              ]}>
+              ${payment.IMPORTE}
+            </Text>
+            <Text
+              style={[
+                saleDetailsStyles.textSecondary,
+                saleDetailsStyles.colorTextWhite,
+              ]}>
+              {payment.GUARDADO_EN_MICROSIP ? 'Enviado' : 'No enviado'}
+            </Text>
+          </View>
+        </ImageBackground>
+      </Pressable>
+    );
+  },
+);
 
 export default SaleDetails;

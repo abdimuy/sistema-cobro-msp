@@ -199,6 +199,10 @@ const SaleItem = memo(
                   NO TIENE ATRASOS
                 </Text>
               </View>
+            ) : dayjs().diff(dayjs(sale.FECHA), 'year') >= 1 ? (
+              <View style={[saleItemStyles.badge, badgeAtrasadosStyle]}>
+                <Text style={badgeTextAtrasadosStyle}>CTA. VENCIDA</Text>
+              </View>
             ) : (
               <View style={[saleItemStyles.badge, badgeAtrasadosStyle]}>
                 <Text style={badgeTextAtrasadosStyle}>PAGOS ATRASA: </Text>
@@ -207,12 +211,12 @@ const SaleItem = memo(
                 </Text>
               </View>
             )}
-            {sale.FECHA_ULT_PAGO && (
+            {sale.PAGOS[0] && (
               <View style={[saleItemStyles.badge, saleItemStyles.badgeBase]}>
                 <Text style={saleItemStyles.badgeTextBase}>ULT PAGO: </Text>
                 <Text
                   style={[saleItemStyles.badgeTextBase, {fontWeight: '600'}]}>
-                  {dayjs(sale.FECHA_ULT_PAGO).fromNow().toUpperCase()}
+                  {dayjs(sale.PAGOS[0].FECHA_HORA_PAGO).fromNow().toUpperCase()}
                 </Text>
               </View>
             )}

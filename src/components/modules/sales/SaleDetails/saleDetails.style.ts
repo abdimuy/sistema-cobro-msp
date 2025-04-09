@@ -64,11 +64,14 @@ const saleDetailsStyles = StyleSheet.create({
     fontWeight: 'bold',
     color: 'lightsteelblue',
   },
+  colorTextWhite: {
+    color: 'white',
+  },
   mapImg: {
     width: 100,
     height: 100,
     borderRadius: 20,
-    backgroundColor: 'grey',
+    backgroundColor: 'transparent',
   },
   select: {
     display: 'flex',
@@ -170,6 +173,20 @@ const saleDetailsStyles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 10,
   },
+  rowHalf: {
+    display: 'flex',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    paddingHorizontal: 20,
+  },
+  rowItem: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 0,
+    width: '50%',
+  },
   telInfo: {
     display: 'flex',
     flexDirection: 'column',
@@ -229,6 +246,8 @@ const saleDetailsStyles = StyleSheet.create({
   saleInfo: {
     display: 'flex',
     flexDirection: 'column',
+    justifyContent: 'center',
+    alignItems: 'center',
     gap: 10,
     width: '100%',
     paddingVertical: 30,
@@ -239,7 +258,6 @@ const saleDetailsStyles = StyleSheet.create({
   },
   addPaymentButton: {
     display: 'flex',
-    flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
     padding: 10,
@@ -248,6 +266,8 @@ const saleDetailsStyles = StyleSheet.create({
     borderRadius: 10,
     marginHorizontal: 20,
     marginBottom: 20,
+    height: 120,
+    gap: 15,
   },
   alertPayment: {
     display: 'flex',
@@ -267,15 +287,14 @@ const saleDetailsStyles = StyleSheet.create({
   },
   addVisitaButton: {
     display: 'flex',
-    flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
     padding: 10,
-    width: '90%',
+    width: '48%',
+    height: 120,
     backgroundColor: '#198754',
     borderRadius: 10,
-    marginHorizontal: 20,
-    marginBottom: 20,
+    gap: 10,
   },
   addPaymentButtonText: {
     color: 'white',
@@ -311,7 +330,8 @@ const saleDetailsStyles = StyleSheet.create({
     textAlignVertical: 'top',
     borderRadius: 10,
     color: 'black',
-    fontSize: 24,
+    fontSize: 26,
+    fontWeight: '600',
   },
   addNotaModalInput: {
     padding: 10,
@@ -351,18 +371,18 @@ const saleDetailsStyles = StyleSheet.create({
     color: 'white',
     fontSize: 18,
     fontWeight: 'bold',
+    textAlign: 'center',
   },
   addCondonacionButton: {
     display: 'flex',
-    flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
     padding: 10,
-    width: '90%',
+    width: '48%',
     backgroundColor: '#dc3545',
     borderRadius: 10,
-    marginHorizontal: 20,
-    marginBottom: 20,
+    height: 120,
+    gap: 10,
   },
   payments: {
     display: 'flex',
@@ -376,12 +396,15 @@ const saleDetailsStyles = StyleSheet.create({
   },
   paymentItem: {
     display: 'flex',
-    flexDirection: 'column',
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: 20,
     paddingVertical: 10,
+    backgroundColor: 'transparent',
+    marginHorizontal: 20,
     borderRadius: 10,
-    backgroundColor: 'lightgrey',
+    overflow: 'hidden',
   },
   pricingCard: {
     backgroundColor: PRIMARY_COLOR,
@@ -390,10 +413,11 @@ const saleDetailsStyles = StyleSheet.create({
     paddingVertical: 20,
     gap: 10,
     marginHorizontal: 20,
+    overflow: 'hidden',
   },
   pricingCardTitle: {
     color: 'white',
-    fontSize: 28,
+    fontSize: 32,
     fontWeight: '700',
     textAlign: 'center',
   },
@@ -435,13 +459,53 @@ const saleDetailsStyles = StyleSheet.create({
   badgeSuccessText: {
     color: '#03543f',
     fontWeight: '600',
-    fontSize: 24,
+    fontSize: 20,
   },
   paySugerencias: {
     flexDirection: 'row',
     gap: 5,
     flexWrap: 'wrap',
     justifyContent: 'space-around',
+  },
+  badge: {
+    marginTop: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    flexDirection: 'row',
+    borderRadius: 10,
+    width: 'auto',
+  },
+  badgeSuccess1: {
+    backgroundColor: '#def7ec',
+  },
+  badgeSuccessText1: {
+    color: '#03543f',
+    fontWeight: '600',
+    fontSize: 20,
+  },
+  badgeWarning: {
+    backgroundColor: '#fdf6b2',
+  },
+  badgeWarningText: {
+    color: '#723b13',
+    fontWeight: '600',
+    fontSize: 20,
+  },
+  badgeDanger: {
+    backgroundColor: '#fde8e8',
+  },
+  badgeDangerText: {
+    color: '#9b1c1c',
+    fontWeight: '600',
+    fontSize: 20,
+  },
+  badgeBase: {
+    backgroundColor: '#e1effe',
+  },
+  badgeTextBase: {
+    color: '#1e429f',
+    fontWeight: '600',
+    fontSize: 20,
   },
 });
 

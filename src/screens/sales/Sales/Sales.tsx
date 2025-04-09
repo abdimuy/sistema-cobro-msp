@@ -24,6 +24,7 @@ import getSalesLocal from '../../../services/getSalesLocal';
 import {SaleServer} from '../../home/Home';
 import {SaleWithProductos} from '../../../services/getSaleLocal';
 import Icon from 'react-native-vector-icons/FontAwesome6';
+import dayjs from 'dayjs';
 
 type SalesScreenNavigationProp = StackNavigationProp<
   SalesStackParamList,
@@ -38,8 +39,6 @@ interface SalesProps {
 const Sales = ({sales, loading}: SalesProps) => {
   const navigation = useNavigation<SalesScreenNavigationProp>();
   const [searchText, setSearchText] = useState<string>('');
-  // const [sales, setSales] = useState<SaleWithProductos[]>([]);
-  // const [loading, setLoading] = useState(true);
 
   const [filteredSales, setFilteredSales] =
     useState<SaleWithProductos[]>(sales);
@@ -61,7 +60,18 @@ const Sales = ({sales, loading}: SalesProps) => {
 
   useEffect(() => {
     if (!searchText) {
-      setFilteredSales(sales);
+      setFilteredSales(
+        sales.sort((sale1, sale2) => {
+          const sale1IsNew = sale1.PAGOS.length === 0;
+          const sale2IsNew = sale2.PAGOS.length === 0;
+          if (sale1IsNew === sale2IsNew) {
+            return dayjs(sale1.PAGOS[0]?.FECHA_HORA_PAGO).diff(
+              dayjs(sale2.PAGOS[0]?.FECHA_HORA_PAGO),
+            );
+          }
+          return sale1IsNew ? -1 : 1;
+        }),
+      );
       return;
     }
     setFilteredSales(
@@ -279,7 +289,7 @@ const Router = () => {
           <TextInput
             style={salesStyles.headerSearchInput}
             value={searchText}
-            placeholder="Buscar cliente por nombre, folio o dirección"
+            placeholder="Buscar por nombre, folio o dirección"
             placeholderTextColor={TEXT_COLOR_TERTIARY}
             textAlignVertical="center"
             onChangeText={setSearchText}

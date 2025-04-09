@@ -22,13 +22,14 @@ export default async (): Promise<PagosAtrasados[]> => {
       CASE 
       WHEN ((ventas.PARCIALIDADES_TRANSCURRIDAS * ventas.PARCIALIDAD - (ventas.PRECIO_TOTAL - ventas.SALDO_REST)) / ventas.PARCIALIDAD) > (ventas.SALDO_REST / ventas.PARCIALIDAD)
       THEN (ventas.SALDO_REST / ventas.PARCIALIDAD)
-            ELSE ((ventas.PARCIALIDADES_TRANSCURRIDAS * ventas.PARCIALIDAD - (ventas.PRECIO_TOTAL - ventas.SALDO_REST)) / ventas.PARCIALIDAD)
+            ELSE ((ventas.PARCIALIDADES_TRANSCURRIDAS * ventas.PARCIALIDAD - (ventas.PRECIO_TOTAL - ventas.SALDO_REST - ventas.ENGANCHE)) / ventas.PARCIALIDAD)
       END AS NUM_PAGOS_ATRASADOS,
       ventas.PARCIALIDAD
       FROM (
         SELECT
         ventas.DOCTO_CC_ID,
         ventas.CLIENTE,
+        ventas.ENGANCHE,
         COALESCE(MAX(pagos.FECHA_HORA_PAGO), date('now')) AS FECHA_ULT_PAGO,
         COALESCE(COUNT(pagos.FECHA_HORA_PAGO), 0) AS NUM_IMPORTES,
         COALESCE(SUM(pagos.IMPORTE), 0) AS TOTAL_IMPORTE,
