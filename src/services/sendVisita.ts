@@ -1,4 +1,4 @@
-import {VisitaType} from '../components/modules/sales/SaleDetails/SaleDetails';
+import {CASA_CERRADA, FUE_GROSERO, NO_RESPONDE, NO_SE_ENCONTRABA, NO_VA_A_DAR_PAGO, PIDE_REAGENDAR, PIDE_TIEMPO, SE_ESCONDE, SE_ESCUCHAN_RUIDOS, SOLO_MENORES, TIENE_PERO_NO_PAGA, VisitaType} from '../components/modules/sales/SaleDetails/SaleDetails';
 import {openDatabase} from '../sqlite/connection';
 import initializeApi from './api';
 
@@ -48,14 +48,29 @@ const sendVisita = async (
     ];
     await db.executeSql(sql, values);
 
+    const volverVisitar = [
+      NO_SE_ENCONTRABA,
+      CASA_CERRADA,
+      SOLO_MENORES,
+      PIDE_TIEMPO,
+      SE_ESCONDE,
+      NO_RESPONDE,
+      SE_ESCUCHAN_RUIDOS,
+      PIDE_REAGENDAR
+    ];
+    
+    const noPagado = [
+      NO_VA_A_DAR_PAGO,
+      TIENE_PERO_NO_PAGA,
+      FUE_GROSERO
+    ];
+    
     let typeVisita = '';
-
-    if (tipoVisita === 'No se encontraba') {
+    
+    if (volverVisitar.includes(tipoVisita)) {
       typeVisita = 'VOLVER VISITAR';
-    } else if (tipoVisita === 'No va a dar pago') {
+    } else if (noPagado.includes(tipoVisita)) {
       typeVisita = 'NO PAGADO';
-    } else if (tipoVisita === 'Se esconde y no sale') {
-      typeVisita = 'VOLVER VISITAR';
     }
 
     const sqlUpdate = `

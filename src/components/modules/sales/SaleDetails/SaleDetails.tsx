@@ -14,6 +14,7 @@ import {
   ImageBackground,
   ToastAndroid,
   FlatList,
+  Platform,
 } from 'react-native';
 import React, {
   memo,
@@ -41,13 +42,15 @@ import {PagoServer} from '../../../../screens/home/Home';
 import sendPago from '../../../../services/sendPago';
 import sendVisita, {VisitaLocal} from '../../../../services/sendVisita';
 import uuid from 'react-native-uuid';
-import 'dayjs/locale/es'; // Cargar el idioma español
+import 'dayjs/locale/es';
 import Card from '../../../common/Card/Card';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import useCalculateLocation from '../../../../hooks/useCalculateLocation';
 import getAccuratePosition, {
   checkGPSEnabled,
 } from '../../../../utils/geolocation/getAccuratePosition';
+import {DateTimePickerAndroid} from '@react-native-community/datetimepicker';
+import {Button} from '@gluestack-ui/themed';
 
 dayjs.extend(relativeTime);
 dayjs.locale('es');
@@ -70,14 +73,33 @@ type SaleDetailsNavigationProp = StackNavigationProp<
   'SaleDetails'
 >;
 
-const NO_SE_ENCONTRABA = 'No se encontraba';
-const NO_VA_A_DAR_PAGO = 'No va a dar pago';
-const SE_ESCONDE_Y_NO_SALE = 'Se esconde y no sale';
+export const NO_SE_ENCONTRABA = 'No se encontraba';
+export const CASA_CERRADA = 'Casa cerrada con candado';
+export const SOLO_MENORES = 'Solo había menores';
+
+export const NO_VA_A_DAR_PAGO = 'Dijo que no va a pagar';
+export const PIDE_TIEMPO = 'Pidió que regrese otro día';
+export const TIENE_PERO_NO_PAGA = 'Tiene dinero pero no quiso pagar';
+export const FUE_GROSERO = 'Fue grosero o agresivo';
+
+export const SE_ESCONDE = 'Se asomó pero no salió';
+export const NO_RESPONDE = 'No responde aunque está';
+export const SE_ESCUCHAN_RUIDOS = 'Se escuchan ruidos pero no abre';
+
+export const PIDE_REAGENDAR = 'Pidió reagendar visita';
 
 export type VisitaType =
   | typeof NO_SE_ENCONTRABA
   | typeof NO_VA_A_DAR_PAGO
-  | typeof SE_ESCONDE_Y_NO_SALE;
+  | typeof CASA_CERRADA
+  | typeof SOLO_MENORES
+  | typeof TIENE_PERO_NO_PAGA
+  | typeof FUE_GROSERO
+  | typeof SE_ESCONDE
+  | typeof NO_RESPONDE
+  | typeof SE_ESCUCHAN_RUIDOS
+  | typeof PIDE_TIEMPO
+  | typeof PIDE_REAGENDAR;
 
 export const PAGO_EN_EFECTIVO_ID = 157;
 export const PAGO_CON_TRANSFERENCIA_ID = 52569;
@@ -139,6 +161,7 @@ const SaleDetails = () => {
   const [selectedFormaCobro, setSelectedFormaCobro] =
     useState<number>(PAGO_EN_EFECTIVO_ID);
   const [alertPayment, setAlertPayment] = useState<string>('');
+  const [fechaReagendada, setFechaReagendada] = useState<Date | null>(null);
   const [showAllLocations, setShowAllLocations] = useState<boolean>(false);
   const coords = useMemo(
     () => sale.pagos.map(pago => [Number(pago.LAT), Number(pago.LNG)]),
@@ -517,6 +540,26 @@ const SaleDetails = () => {
     },
     [userData.FECHA_CARGA_INICIAL, goToPayment],
   );
+
+  const showDatePicker = () => {
+    if (Platform.OS === 'android') {
+      DateTimePickerAndroid.open({
+        value: new Date(),
+        onChange: (event, selectedDate) => {
+          if (event.type === 'set' && selectedDate) {
+            setFechaReagendada(selectedDate);
+            setNotaVisita(
+              `Reagendar visita para ${dayjs(selectedDate).format(
+                'DD/MM/YYYY',
+              )}`,
+            );
+          }
+        },
+        mode: 'date',
+        is24Hour: true,
+      });
+    }
+  };
 
   if (loading) {
     return (
@@ -1060,35 +1103,62 @@ const SaleDetails = () => {
             <RNPickerSelect
               value={selectedNotaVisita}
               onValueChange={value => setSelectedNotaVisita(value)}
-              placeholder={{
-                label: NO_SE_ENCONTRABA,
-                value: NO_SE_ENCONTRABA,
-              }}
               items={[
-                // {label: NO_SE_ENCONTRABA, value: NO_SE_ENCONTRABA},
-                {label: NO_VA_A_DAR_PAGO, value: NO_VA_A_DAR_PAGO},
-                {label: SE_ESCONDE_Y_NO_SALE, value: SE_ESCONDE_Y_NO_SALE},
+                {label: '🟡 No se encontraba', value: NO_SE_ENCONTRABA},
+                {label: '🔒 Casa cerrada con candado', value: CASA_CERRADA},
+                {label: '👶 Solo había menores', value: SOLO_MENORES},
+                {label: '🚫 Dijo que no va a pagar', value: NO_VA_A_DAR_PAGO},
+                {label: '🕒 Pidió que regrese otro día', value: PIDE_TIEMPO},
+                {
+                  label: '💸 Tiene dinero pero no quiso pagar',
+                  value: TIENE_PERO_NO_PAGA,
+                },
+                {label: '😠 Fue grosero o agresivo', value: FUE_GROSERO},
+                {label: '👀 Se asomó pero no salió', value: SE_ESCONDE},
+                {label: '🚪 No responde aunque está', value: NO_RESPONDE},
+                {
+                  label: '🔇 Se escuchan ruidos pero no abre',
+                  value: SE_ESCUCHAN_RUIDOS,
+                },
+                {label: '📆 Pidió reagendar visita', value: PIDE_REAGENDAR},
               ]}
               style={{
                 inputAndroid: {
                   color: 'black',
-                  fontSize: 20,
+                  fontSize: 18,
                 },
                 inputIOS: {
                   color: 'black',
-                  fontSize: 20,
-                },
-                placeholder: {
-                  color: 'black',
-                  fontSize: 20,
+                  fontSize: 18,
                 },
                 viewContainer: {
                   borderColor: 'lightgrey',
                   borderWidth: 1,
                   borderRadius: 10,
+                  paddingHorizontal: 10,
                 },
               }}
             />
+
+            {[PIDE_REAGENDAR, PIDE_TIEMPO].includes(selectedNotaVisita) && (
+              <Button
+                style={saleDetailsStyles.button}
+                onPress={showDatePicker}
+                borderColor="lightgrey">
+                <Text
+                  style={{
+                    color: 'white',
+                    fontSize: 18,
+                  }}>
+                  {fechaReagendada
+                    ? `${dayjs(fechaReagendada).format('DD/MM/YYYY')} ${dayjs(
+                        fechaReagendada,
+                      ).fromNow()}`
+                    : 'Seleccionar nueva fecha'}
+                </Text>
+              </Button>
+            )}
+
             <TextInput
               style={saleDetailsStyles.addNotaModalInput}
               placeholder="Nota Adicional"
@@ -1097,6 +1167,7 @@ const SaleDetails = () => {
               scrollEnabled={false}
               numberOfLines={10}
               onChangeText={text => setNotaVisita(text)}
+              value={notaVisita}
             />
             <Pressable
               style={[

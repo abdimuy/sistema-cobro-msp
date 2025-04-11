@@ -308,6 +308,16 @@ const saleDetailsStyles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
   },
+  button: {
+    backgroundColor: PRIMARY_COLOR,
+    padding: 10,
+    borderRadius: 10,
+    width: '90%',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    alignSelf: 'center',
+  },
   addPayModal: {
     display: 'flex',
     flexDirection: 'column',
