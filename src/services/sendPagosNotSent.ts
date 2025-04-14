@@ -24,7 +24,7 @@ const sendPagosNotSent = async (
   if (!sendAllPagos) {
     if (pagosNotSent.length === 0 && visitasNotSent.length === 0) {
       if (showAlerts) {
-        Alert.alert('No hay pagos por enviar');
+        Alert.alert('No hay pagos ni visitas pendientes por enviar');
       }
       return;
     }

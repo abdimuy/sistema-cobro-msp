@@ -6,7 +6,7 @@ export const shareImage = async (imageUri: string): Promise<void> => {
       title: 'Compartir Imagen',
       message: 'Aquí está la imagen generada.',
       url: imageUri,
-      type: 'image/png',
+      type: 'application/octet-stream',
     });
   } catch (error) {
     console.error('Error al compartir la imagen:', error);

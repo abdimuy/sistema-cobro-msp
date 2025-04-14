@@ -1,4 +1,4 @@
-import dayjs, {Dayjs} from 'dayjs';
+import {Dayjs} from 'dayjs';
 import {PagoServer} from '../screens/home/Home';
 import {openDatabase} from '../sqlite/connection';
 import {CONDONACION_ID} from '../components/modules/sales/SaleDetails/SaleDetails';

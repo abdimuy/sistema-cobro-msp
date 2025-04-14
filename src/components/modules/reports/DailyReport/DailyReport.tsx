@@ -338,23 +338,30 @@ Total de pagos: ${
       </ScrollView>
       <View style={styles.section}>
         <Text style={styles.total}>Selecciona una impresora: </Text>
-        <Picker
-          style={{color: 'black'}}
-          selectedValue={selectedPrinter}
-          onValueChange={itemValue => savePrinter(itemValue)}>
-          <Picker.Item
-            label="Selecciona una impresora"
-            value={null}
-            key={`printer-item-null`}
-          />
-          {devices.map((item, index) => (
+        <View
+          style={{
+            borderWidth: 1,
+            borderColor: 'gray',
+            borderRadius: 10,
+            height: 50,
+          }}>
+          <Picker
+            selectedValue={selectedPrinter}
+            onValueChange={itemValue => savePrinter(itemValue)}>
             <Picker.Item
-              label={item.device_name}
-              value={item}
-              key={`printer-item-${item.inner_mac_address}`}
+              label="Selecciona una impresora"
+              value={null}
+              key={`printer-item-null`}
             />
-          ))}
-        </Picker>
+            {devices.map((item, index) => (
+              <Picker.Item
+                label={item.device_name}
+                value={item}
+                key={`printer-item-${item.inner_mac_address}`}
+              />
+            ))}
+          </Picker>
+        </View>
       </View>
       <Pressable
         style={styles.button}

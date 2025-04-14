@@ -15,8 +15,6 @@ import {useRoute} from '@react-navigation/core';
 import useGetSale from '../../../hooks/useGetSale';
 import dayjs from 'dayjs';
 import {AuthContext} from '../../../../App';
-import useGetPagosBySale from '../../../hooks/useGetPagosBySale';
-import useGetProductosByFolio from '../../../hooks/useGetProductosByFolio';
 
 type SaleDetailScreenRouteProp = RouteProp<SalesStackParamList, 'Payment'>;
 
@@ -148,19 +146,27 @@ TEL: ${userData.TELEFONO}
     <ScrollView style={styles.container}>
       <View style={styles.section}>
         <Text style={styles.label}>Selecciona una impresora: </Text>
-        <Picker
-          style={{color: 'black'}}
-          selectedValue={selectedPrinter}
-          onValueChange={itemValue => savePrinter(itemValue)}>
-          <Picker.Item label="Selecciona una impresora" value={null} />
-          {devices.map((item, index) => (
-            <Picker.Item
-              label={item.device_name}
-              value={item}
-              key={`printer-item-${item.device_name}`}
-            />
-          ))}
-        </Picker>
+        <View
+          style={{
+            borderWidth: 1,
+            borderColor: 'gray',
+            borderRadius: 10,
+            marginBottom: 10,
+          }}>
+          <Picker
+            style={{color: 'black'}}
+            selectedValue={selectedPrinter}
+            onValueChange={itemValue => savePrinter(itemValue)}>
+            <Picker.Item label="Selecciona una impresora" value={null} />
+            {devices.map((item, index) => (
+              <Picker.Item
+                label={item.device_name}
+                value={item}
+                key={`printer-item-${item.device_name}`}
+              />
+            ))}
+          </Picker>
+        </View>
       </View>
       <Button
         disabled={!selectedPrinter}
@@ -174,21 +180,27 @@ TEL: ${userData.TELEFONO}
           print(ticketText);
         }}
       />
-      <Picker
-        style={{color: 'black', borderColor: 'gray', borderWidth: 1}}
-        selectedValue={typeTicket}
-        onValueChange={value => {
-          setTypeTicket(value);
+      <View
+        style={{
+          borderWidth: 1,
+          borderColor: 'gray',
+          borderRadius: 10,
+          marginVertical: 10,
         }}>
-        {tickets.map((item, i) => (
-          // console.log('i', i),
-          <Picker.Item
-            label={item.label}
-            value={i + 1}
-            key={`printer-item-${item.label}`}
-          />
-        ))}
-      </Picker>
+        <Picker
+          selectedValue={typeTicket}
+          onValueChange={value => {
+            setTypeTicket(value);
+          }}>
+          {tickets.map((item, i) => (
+            <Picker.Item
+              label={item.label}
+              value={i + 1}
+              key={`printer-item-${item.label}`}
+            />
+          ))}
+        </Picker>
+      </View>
       <View style={styles.section}>
         <Text style={styles.title}>MUEBLES SAN PABLO</Text>
 

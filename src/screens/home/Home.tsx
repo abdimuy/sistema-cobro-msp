@@ -405,10 +405,12 @@ const Home = () => {
         false,
         dayjs(userData.FECHA_CARGA_INICIAL.toDate().toISOString()),
       );
-      if (pagosNotSent.length > 0) {
+      const visitasNotSent = await getUnsynchronizedLocalVisitas();
+
+      if (pagosNotSent.length > 0 || visitasNotSent.length > 0) {
         Alert.alert(
           'No se puede actualizar los datos',
-          'Aún hay pagos sin enviar, envíalos antes de actualizar los datos',
+          'Aún hay pagos o visitas sin enviar, envíalos antes de realizar la carga inicial',
           [
             {
               text: 'Aceptar',
@@ -419,11 +421,11 @@ const Home = () => {
         return;
       }
       setLoadingCargaInicial(true);
-      await sendPagosNotSent(
-        true,
-        dayjs(userData.FECHA_CARGA_INICIAL.toDate()),
-        false,
-      );
+      // await sendPagosNotSent(
+      //   true,
+      //   dayjs(userData.FECHA_CARGA_INICIAL.toDate()),
+      //   false,
+      // );
       const url =
         '/ventas/getAllVentasByZona/' +
         userData.ZONA_CLIENTE_ID +
@@ -477,128 +479,6 @@ const Home = () => {
             )?.ESTADO_COBRANZA || 'PENDIENTE',
         };
       });
-
-      // const query = `
-      //   INSERT INTO ventas (
-      //     DOCTO_CC_ACR_ID,
-      //     DOCTO_CC_ID,
-      //     FOLIO,
-      //     CLIENTE_ID,
-      //     APLICADO,
-      //     COBRADOR_ID,
-      //     CLIENTE,
-      //     ZONA_CLIENTE_ID,
-      //     LIMITE_CREDITO,
-      //     NOTAS,
-      //     ZONA_NOMBRE,
-      //     IMPORTE_PAGO_PROMEDIO,
-      //     TOTAL_IMPORTE,
-      //     NUM_IMPORTES,
-      //     FECHA,
-      //     PARCIALIDAD,
-      //     ENGANCHE,
-      //     TIEMPO_A_CORTO_PLAZOMESES,
-      //     MONTO_A_CORTO_PLAZO,
-      //     VENDEDOR_1,
-      //     VENDEDOR_2,
-      //     VENDEDOR_3,
-      //     PRECIO_TOTAL,
-      //     IMPTE_REST,
-      //     SALDO_REST,
-      //     FECHA_ULT_PAGO,
-      //     CALLE,
-      //     CIUDAD,
-      //     ESTADO,
-      //     TELEFONO,
-      //     NOMBRE_COBRADOR,
-      //     DIA_COBRANZA,
-      //     ESTADO_COBRANZA,
-      //     DIA_TEMPORAL_COBRANZA,
-      //     PRECIO_DE_CONTADO,
-      //     AVAL_O_RESPONSABLE,
-      //     FREC_PAGO
-      //   ) VALUES ${ventas
-      //     .map(
-      //       v => `(
-      //       ${v.DOCTO_CC_ACR_ID},
-      //       ${v.DOCTO_CC_ID},
-      //       '${v.FOLIO.replace(/'/g, "''")}', -- Escapado de comillas simples
-      //       ${v.CLIENTE_ID},
-      //       '${v.APLICADO.replace(/'/g, "''")}', -- Escapado de comillas simples
-      //       ${v.COBRADOR_ID},
-      //       '${v.CLIENTE.replace(/'/g, "''")}', -- Escapado de comillas simples
-      //       ${v.ZONA_CLIENTE_ID},
-      //       ${v.LIMITE_CREDITO},
-      //       '${JSON.stringify(v.NOTAS).replace(/\\u[0-9A-fa-f]{4}/g, "''")}',
-      //       '${v.ZONA_NOMBRE.replace(
-      //         /'/g,
-      //         "''",
-      //       )}', -- Escapado de comillas simples
-      //       ${
-      //         v.IMPORTE_PAGO_PROMEDIO === null
-      //           ? 'NULL'
-      //           : v.IMPORTE_PAGO_PROMEDIO
-      //       },
-      //       ${v.TOTAL_IMPORTE},
-      //       ${v.NUM_IMPORTES},
-      //       '${
-      //         v.FECHA
-      //       }', -- Asegúrate de que la fecha esté en el formato correcto
-      //       ${v.PARCIALIDAD},
-      //       ${v.ENGANCHE},
-      //       ${v.TIEMPO_A_CORTO_PLAZOMESES},
-      //       ${v.MONTO_A_CORTO_PLAZO},
-      //       '${v.VENDEDOR_1.replace(
-      //         /'/g,
-      //         "''",
-      //       )}', -- Escapado de comillas simples
-      //       '${v.VENDEDOR_2.replace(
-      //         /'/g,
-      //         "''",
-      //       )}', -- Escapado de comillas simples
-      //       '${v.VENDEDOR_3.replace(
-      //         /'/g,
-      //         "''",
-      //       )}', -- Escapado de comillas simples
-      //       ${v.PRECIO_TOTAL},
-      //       ${v.IMPTE_REST},
-      //       ${v.SALDO_REST},
-      //       ${
-      //         v.FECHA_ULT_PAGO === null ? 'NULL' : `'${v.FECHA_ULT_PAGO}'`
-      //       }, -- Escapado y NULL
-      //       '${JSON.stringify(v.CALLE).replace(
-      //         /\\u[0-9A-fa-f]{4}/g,
-      //         "''",
-      //       )}', -- Escapado de comillas simples
-      //       '${v.CIUDAD.replace(/'/g, "''")}', -- Escapado de comillas simples
-      //       '${v.ESTADO.replace(/'/g, "''")}', -- Escapado de comillas simples
-      //       '${v.TELEFONO.replace(/'/g, "''")}', -- Escapado de comillas simples
-      //       '${v.NOMBRE_COBRADOR.replace(
-      //         /'/g,
-      //         "''",
-      //       )}', -- Escapado de comillas simples
-      //       '${v.DIA_COBRANZA.replace(
-      //         /'/g,
-      //         "''",
-      //       )}', -- Escapado de comillas simples
-      //       '${v.ESTADO_COBRANZA.replace(
-      //         /'/g,
-      //         "''",
-      //       )}', -- Escapado de comillas simples
-      //       '${v.DIA_TEMPORAL_COBRANZA.replace(
-      //         /'/g,
-      //         "''",
-      //       )}', -- Escapado de comillas simples
-      //       ${v.PRECIO_DE_CONTADO},
-      //       '${v.AVAL_O_RESPONSABLE.replace(
-      //         /'/g,
-      //         "''",
-      //       )}', -- Escapado de comillas simples
-      //       '${v.FREC_PAGO.replace(/'/g, "''")}' -- Escapado de comillas simples
-      //     )`,
-      //     )
-      //     .join(',\n')};
-      // `;
 
       const query = `
   INSERT INTO ventas (
@@ -734,7 +614,6 @@ const Home = () => {
           )
           .join(',\n')};
       `;
-      // console.log(pagos.slice(0, 4));
 
       if (pagos.length > 0) {
         await dbSqlite.executeSql(queryPagos);
@@ -1269,7 +1148,7 @@ const Home = () => {
 
       <View style={{marginVertical: 10, gap: 4}}>
         <Text style={{color: 'gray', textAlign: 'center', fontSize: 20}}>
-          Version: 1.0.7
+          Version: 1.0.8
         </Text>
         <Text style={{color: 'gray', textAlign: 'center', fontSize: 18}}>
           API URL: {baseURL}
