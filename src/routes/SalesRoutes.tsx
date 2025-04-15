@@ -8,7 +8,7 @@ import Notice from '../components/modules/notice/Notice';
 export type SalesStackParamList = {
   Sales: undefined;
   SaleDetails: {saleId: number};
-  Payment: {paymentId: string; saleId: number};
+  Payment: {paymentId: string; saleId: number; sendByWhatsapp?: boolean};
   Notice: {saleId: number};
 };
 

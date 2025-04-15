@@ -113,7 +113,6 @@ const AuthProvider = ({children}: {children: React.ReactNode}) => {
               LNG = ${position.coords.longitude}
           WHERE ID = '${payment.ID}'
         `);
-        console.log('El pago se ha enviado al servidor');
       } catch (err) {
         console.log('Error al guardar el pago', err);
       }

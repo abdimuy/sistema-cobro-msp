@@ -268,7 +268,7 @@ Total de pagos: ${
         title: 'Compartir Imagen',
         message: 'Reporte diario - ' + dayjs().format('DD/MM/YYYY'),
         urls: [`file://${imageUri}`, `file://${imageUriVisita}`],
-        type: 'image/png',
+        type: 'application/octet-stream',
       });
 
       Alert.alert('Éxito', 'Imagen compartida exitosamente.');

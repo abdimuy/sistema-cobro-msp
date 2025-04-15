@@ -48,7 +48,6 @@ const WeeklyReport = () => {
   } = usePrinter();
 
   const {visitas, loading: loadingVisitas} = useGetVisitas();
-  console.log(visitas);
 
   const getLocalPayments = async () => {
     try {
@@ -64,14 +63,6 @@ const WeeklyReport = () => {
       const [results] = await dbSqlite.executeSql(query, [
         userData.FECHA_CARGA_INICIAL.toDate().toISOString(),
       ]);
-
-      // const [results1] = await dbSqlite.executeSql(`
-      //   SELECT *
-      //   FROM pagos
-      //   ORDER BY FECHA_HORA_PAGO DESC
-      //   LIMIT 10;
-      //   `);
-      // console.log(results1.rows.raw());
 
       const pagos: PagoServer[] = results.rows.raw() as PagoServer[];
       setPagos(pagos);
@@ -259,7 +250,7 @@ Total de pagos: ${
         title: 'Compartir Imagen',
         message: 'Reporte semanal - ' + dayjs().format('DD/MM/YYYY'),
         urls: [`file://${imageUri}`, `file://${imageUriVisitas}`],
-        type: 'image/png',
+        type: 'application/octet-stream',
       });
 
       Alert.alert('Éxito', 'Imagen compartida exitosamente.');

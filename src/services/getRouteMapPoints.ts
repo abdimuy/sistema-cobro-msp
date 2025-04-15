@@ -34,7 +34,6 @@ const getRouteMapPoints = async (dateInit: Dayjs, dateEnd: Dayjs) => {
     dateInit.toISOString(),
     dateEnd.toISOString(),
   ]);
-  console.log({result});
 
   const points = result.rows.raw() as RouteMapPoint[];
 

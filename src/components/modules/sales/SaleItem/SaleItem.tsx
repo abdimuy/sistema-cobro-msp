@@ -114,32 +114,7 @@ const SaleItem = memo(
             <View
               style={{
                 display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 5,
-                backgroundColor: PRIMARY_COLOR,
-                borderRadius: 10,
-                height: 50,
-                width: 50,
-              }}>
-              <Text
-                style={{
-                  color: TEXT_COLOR_SECONDARY,
-                  fontSize: 20,
-                  fontWeight: 'bold',
-                }}>
-                {sale?.DIA_COBRANZA.substring(0, 2)}
-              </Text>
-            </View>
-          </View>
-
-          <View style={saleItemStyles.labels}>
-            <View
-              style={{
-                display: 'flex',
                 flexDirection: 'row',
-                alignItems: 'center',
                 gap: 5,
                 width: 'auto',
               }}>
@@ -153,6 +128,9 @@ const SaleItem = memo(
                 {sale.CLIENTE}
               </Text>
             </View>
+          </View>
+
+          <View style={saleItemStyles.labels}>
             {sale.AVAL_O_RESPONSABLE && (
               <Text style={saleItemStyles.aval}>{sale.AVAL_O_RESPONSABLE}</Text>
             )}
@@ -168,6 +146,30 @@ const SaleItem = memo(
               style={saleItemStyles.address}>
               {sale.PRODUCTOS.map(producto => producto.ARTICULO).join(', ')}
             </Text>
+            {sale.DIA_TEMPORAL_COBRANZA && (
+              <View
+                style={[
+                  saleItemStyles.badge,
+                  saleItemStyles.badgeWarning,
+                  {alignSelf: 'center'},
+                ]}>
+                <Text
+                  style={[
+                    saleItemStyles.badgeTextBase,
+                    saleItemStyles.badgeWarningText,
+                    {fontSize: 18},
+                  ]}>
+                  VISITAR{' '}
+                  {`${
+                    dayjs(sale.DIA_TEMPORAL_COBRANZA).diff(dayjs(), 'day') >= 1
+                      ? dayjs(sale.DIA_TEMPORAL_COBRANZA)
+                          .fromNow()
+                          .toUpperCase()
+                      : 'HOY'
+                  } ${dayjs(sale.DIA_TEMPORAL_COBRANZA).format('DD/MM/YYYY')}`}
+                </Text>
+              </View>
+            )}
           </View>
         </View>
 

@@ -49,6 +49,7 @@ import getSalesLocal from '../../services/getSalesLocal';
 import {SaleWithProductos} from '../../services/getSaleLocal';
 import truncarNumero from '../../utils/math/trucarNumero';
 import useGetAPIConfig from '../../hooks/useGetAPIConfig';
+import saleItemStyles from '../../components/modules/sales/SaleItem/saleItem.styles';
 
 dayjs.extend(relativeTime);
 dayjs.locale('es');
@@ -209,7 +210,10 @@ const Home = () => {
 
       const sqlite = await openDatabase();
       await sqlite.executeSql(`
-        UPDATE ventas SET ESTADO_COBRANZA = 'PENDIENTE';
+        UPDATE ventas
+        SET
+          ESTADO_COBRANZA = 'PENDIENTE',
+          DIA_TEMPORAL_COBRANZA = ''
       `);
       // await sendPagosNotSent(
       //   true,
@@ -307,7 +311,6 @@ const Home = () => {
   const getPorcentajeParcialLocal = () => {
     getPorcentajeParcial(dayjs(userData.FECHA_CARGA_INICIAL.toDate()))
       .then(result => {
-        console.log(result.rows);
         setPorcentajeParcial(result.porcentaje);
       })
       .catch(err => {
@@ -1070,6 +1073,35 @@ const Home = () => {
                             </Text>
                           </Text>
                         </View>
+                        {sale?.DIA_TEMPORAL_COBRANZA && (
+                          <View
+                            style={[
+                              saleItemStyles.badge,
+                              saleItemStyles.badgeWarning,
+                              {alignSelf: 'center'},
+                            ]}>
+                            <Text
+                              style={[
+                                saleItemStyles.badgeTextBase,
+                                saleItemStyles.badgeWarningText,
+                                {fontSize: 18},
+                              ]}>
+                              VISITAR{' '}
+                              {`${
+                                dayjs(sale.DIA_TEMPORAL_COBRANZA).diff(
+                                  dayjs(),
+                                  'day',
+                                ) >= 1
+                                  ? dayjs(sale.DIA_TEMPORAL_COBRANZA)
+                                      .fromNow()
+                                      .toUpperCase()
+                                  : 'HOY'
+                              } ${dayjs(sale.DIA_TEMPORAL_COBRANZA).format(
+                                'DD/MM/YYYY',
+                              )}`}
+                            </Text>
+                          </View>
+                        )}
                       </View>
                     </View>
                   </Pressable>

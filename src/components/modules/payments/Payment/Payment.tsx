@@ -1,4 +1,4 @@
-import React, {useContext, useEffect} from 'react';
+import React, {useContext, useEffect, useRef} from 'react';
 import {Picker} from '@react-native-picker/picker';
 import {
   StyleSheet,
@@ -7,6 +7,7 @@ import {
   Button,
   ActivityIndicator,
   ScrollView,
+  Alert,
 } from 'react-native';
 import usePrinter from '../../../../hooks/usePrinter';
 import {SalesStackParamList} from '../../../../routes/SalesRoutes';
@@ -20,6 +21,9 @@ import {AuthContext} from '../../../../../App';
 import {CONDONACION_ID} from '../../sales/SaleDetails/SaleDetails';
 import useGetPagosBySale from '../../../../hooks/useGetPagosBySale';
 import useGetProductosByFolio from '../../../../hooks/useGetProductosByFolio';
+import ViewShot from 'react-native-view-shot';
+import TicketSVG from '../TicketSVG/TicketSVG';
+import Share from 'react-native-share';
 
 type SaleDetailScreenRouteProp = RouteProp<SalesStackParamList, 'Payment'>;
 
@@ -35,8 +39,8 @@ export default function Payment() {
   const {loading: productosLoading, productos} = useGetProductosByFolio(
     sale.FOLIO,
   );
+  const viewShotRef = useRef<ViewShot>(null);
 
-  // Ordenar pagos por fecha y solo los ultimos 5
   const paymentsOrder = payments
     .sort(
       (a, b) =>
@@ -58,6 +62,29 @@ export default function Payment() {
   useEffect(() => {
     getListDevices();
   }, []);
+
+  const handleShareImage = async () => {
+    try {
+      if (!viewShotRef.current?.capture) {
+        throw new Error('ViewShot ref is not initialized');
+      }
+
+      const imageUri = await viewShotRef.current.capture();
+
+      await Share.open({
+        title: 'Compartir comprobante',
+        message: 'Comprobante de pago - ' + dayjs().format('DD/MM/YYYY'),
+        url: `file://${imageUri}`,
+        type: 'image/png',
+      });
+
+      Alert.alert('Éxito', 'Imagen compartida exitosamente.');
+    } catch (error) {
+      console.error('Error al generar o compartir la imagen:', error);
+      Alert.alert('Error', 'No se pudo generar o compartir la imagen.');
+    } finally {
+    }
+  };
 
   const TICKET_TYPE =
     pago.FORMA_COBRO_ID === CONDONACION_ID ? 'CONDONACION' : 'PAGO';
@@ -126,7 +153,71 @@ WHATSAPP: 238-1105061
 AGENTE: ${pago.COBRADOR}
 TELEFONO DEL AGENTE: ${userData.TELEFONO}
 `;
-  console.log(ticketText);
+
+  const ticketTextString = `
+TICKET DE ${TICKET_TYPE}
+
+FOLIO: ${sale.FOLIO}
+CLIENTE: ${sale.CLIENTE}
+DIRECCION: ${sale.CALLE + ' ' + sale.CIUDAD + ', ' + sale.ESTADO}
+TELEFONO: ${sale.TELEFONO}
+FECHA VENTA: ${dayjs(sale.FECHA).format('DD/MM/YYYY')}
+PRECIO TOTAL $${sale.PRECIO_TOTAL.toFixed(2)}
+PRECIO A ${sale.TIEMPO_A_CORTO_PLAZOMESES} MESES: $${sale.MONTO_A_CORTO_PLAZO}
+PRECIO DE CONTADO: $${sale.PRECIO_DE_CONTADO}
+ENGANCHE: $${sale.ENGANCHE.toFixed(2)}
+PARCIALIDAD: $${sale.PARCIALIDAD.toFixed(2)}
+VENDEDORES:
+${sale.VENDEDOR_1 && '- ' + sale.VENDEDOR_1}
+${sale.VENDEDOR_2 && '- ' + sale.VENDEDOR_2}
+${sale.VENDEDOR_3 && '- ' + sale.VENDEDOR_3}
+
+--------------------------------
+
+PRODUCTOS
+
+${productos
+  .map(
+    producto =>
+      `- ${producto.ARTICULO}: $${producto.PRECIO_UNITARIO_IMPTO.toFixed(
+        2,
+      )} x ${producto.CANTIDAD}`,
+  )
+  .join('\n')}
+
+--------------------------------
+
+FECHA DE ${TICKET_TYPE}: ${dayjs(pago.FECHA_HORA_PAGO).format(
+    'DD/MM/YYYY HH:mm',
+  )}
+SALDO ANTERIOR: $${sale.SALDO_REST + pago.IMPORTE}
+IMPORTE DE ${TICKET_TYPE}: $${pago.IMPORTE}
+SALDO ACTUAL: $${sale.SALDO_REST}
+
+--------------------------------
+
+HISTORIAL DE PAGOS
+${paymentsOrder
+  .map(
+    pago =>
+      `- ${
+        pago.FORMA_COBRO_ID === CONDONACION_ID ? 'CONDONACION' : 'ABONO'
+      }: $${pago.IMPORTE.toFixed(2)} - ${dayjs(pago.FECHA_HORA_PAGO).format(
+        'DD/MM/YYYY',
+      )}`,
+  )
+  .join('\n')}
+
+--------------------------------
+
+EXIJA SU COMPROBANTE DE PAGO
+!!!GRACIAS POR SU PREFERENCIA!!!
+
+TELEFONO: 238-3740684
+WHATSAPP: 238-1105061
+AGENTE: ${pago.COBRADOR}
+TELEFONO DEL AGENTE: ${userData.TELEFONO}
+`;
 
   const isLoading =
     loading ||
@@ -156,113 +247,26 @@ TELEFONO DEL AGENTE: ${userData.TELEFONO}
           ))}
         </Picker>
       </View>
-      <Button
-        disabled={loading || !selectedPrinter}
-        title="CONECTAR IMPRESORA"
-        onPress={connectPrinter}
-      />
-      <Button
-        disabled={loading || !selectedPrinter}
-        title="IMPRIMIR TICKET"
-        onPress={() => {
-          print(ticketText);
-        }}
-      />
-      <View style={styles.section}>
-        <Text style={styles.title}>TICKET DE COBRANZA</Text>
-        <Text style={styles.item}>
-          <Text style={styles.label}>FOLIO: </Text>
-          <Text style={styles.value}>{sale.FOLIO}</Text>
-        </Text>
-        <Text style={styles.item}>
-          <Text style={styles.label}>CLIENTE: </Text>
-          <Text style={styles.value}>{sale.CLIENTE}</Text>
-        </Text>
-        <Text style={styles.item}>
-          <Text style={styles.label}>DIRECCION: </Text>
-          <Text style={styles.value}>
-            {sale.CALLE + ' ' + sale.CIUDAD + ', ' + sale.ESTADO}
-          </Text>
-        </Text>
-        <Text style={styles.item}>
-          <Text style={styles.label}>TELEFONO: </Text>
-          <Text style={styles.value}>{sale.TELEFONO}</Text>
-        </Text>
-        <Text style={styles.item}>
-          <Text style={styles.label}>FECHA VENTA: </Text>
-          <Text style={styles.value}>
-            {dayjs(sale.FECHA).format('DD/MM/YYYY')}
-          </Text>
-        </Text>
-        <Text style={styles.item}>
-          <Text style={styles.label}>TOTAL VENTA: </Text>
-          <Text style={styles.value}>${sale.PRECIO_TOTAL.toFixed(2)}</Text>
-        </Text>
-        <Text style={styles.item}>
-          <Text style={styles.label}>ENGANCHE: </Text>
-          <Text style={styles.value}>${sale.ENGANCHE.toFixed(2)}</Text>
-        </Text>
-        <Text style={styles.item}>
-          <Text style={styles.label}>PARCIALIDAD: </Text>
-          <Text style={styles.value}>${sale.PARCIALIDAD.toFixed(2)}</Text>
-        </Text>
-        <Text style={styles.item}>
-          <Text style={styles.label}>VENDEDORES: </Text>
-          <Text style={styles.value}>
-            {sale.VENDEDOR_1 && '\n- ' + sale.VENDEDOR_1}
-            {sale.VENDEDOR_2 && '\n- ' + sale.VENDEDOR_2}
-            {sale.VENDEDOR_3 && '\n- ' + sale.VENDEDOR_3}
-          </Text>
-        </Text>
+      <View style={{gap: 8, marginBottom: 20}}>
+        <Button
+          disabled={loading || !selectedPrinter}
+          title="CONECTAR IMPRESORA"
+          onPress={connectPrinter}
+        />
+        <Button
+          disabled={loading || !selectedPrinter}
+          title="IMPRIMIR TICKET"
+          onPress={() => {
+            print(ticketText);
+          }}
+        />
 
-        <Text style={styles.divider} />
-        <Text style={styles.label}>PRODUCTOS</Text>
-        {productos.map(producto => (
-          <Text style={styles.item} key={producto.POSICION}>
-            <Text style={styles.label}>{producto.ARTICULO}: </Text>
-            <Text style={styles.value}>
-              ${producto.PRECIO_UNITARIO_IMPTO.toFixed(2)} x {producto.CANTIDAD}
-            </Text>
-          </Text>
-        ))}
-        <Text style={styles.divider} />
-
-        <Text style={styles.item}>
-          <Text style={styles.label}>FECHA PAGO: </Text>
-          <Text style={styles.value}>
-            {dayjs(pago.FECHA_HORA_PAGO).format('DD/MM/YYYY HH:mm')}
-          </Text>
-        </Text>
-        <Text style={styles.item}>
-          <Text style={styles.label}>IMPORTE: </Text>
-          <Text style={styles.value}>${pago.IMPORTE.toFixed(2)}</Text>
-        </Text>
-        <Text style={styles.item}>
-          <Text style={styles.label}>ATENDIO: </Text>
-          <Text style={styles.value}>{pago.COBRADOR}</Text>
-        </Text>
-        <Text style={styles.divider} />
-        <Text style={styles.item}>
-          <Text style={styles.label}>SALDO ANTERIOR: </Text>
-          <Text style={styles.value}>${sale.SALDO_REST + pago.IMPORTE}</Text>
-        </Text>
-        <Text style={styles.item}>
-          <Text style={styles.label}>IMPORTE PAGADO: </Text>
-          <Text style={styles.value}>${pago.IMPORTE}</Text>
-        </Text>
-        <Text style={styles.item}>
-          <Text style={styles.label}>SALDO ACTUAL: </Text>
-          <Text style={styles.value}>${sale.SALDO_REST}</Text>
-        </Text>
-        <Text style={styles.divider} />
-        <Text style={styles.item}>
-          <Text style={styles.label}>EXIJA SU COMPROBANTE DE PAGO</Text>
-        </Text>
-        <Text style={styles.item}>
-          <Text style={styles.label}>!!!GRACIAS POR SU PREFERENCIA!!!</Text>
-        </Text>
-        <View style={{marginBottom: 30}}></View>
+        <Button title="COMPARTIR COMPROBANTE" onPress={handleShareImage} />
       </View>
+
+      <ViewShot ref={viewShotRef} options={{format: 'png', quality: 1}}>
+        <TicketSVG ticketText={ticketTextString} width={1000} />
+      </ViewShot>
     </ScrollView>
   );
 }

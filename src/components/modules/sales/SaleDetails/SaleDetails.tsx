@@ -13,8 +13,8 @@ import {
   Alert,
   ImageBackground,
   ToastAndroid,
-  FlatList,
   Platform,
+  SectionList,
 } from 'react-native';
 import React, {
   memo,
@@ -215,18 +215,15 @@ const SaleDetails = () => {
   };
 
   const handleAddPayment = useCallback(async () => {
+    if (refLoadingSave.current) return;
+
+    refLoadingSave.current = true;
+    setLoadingSave(true);
+
     try {
-      if (refLoadingSave.current) return;
-      setLoadingSave(() => {
-        refLoadingSave.current = true;
-        return true;
-      });
       if (payment <= 0) {
-        setLoadingSave(() => {
-          refLoadingSave.current = false;
-          return false;
-        });
-        return setAlertPayment('EL PAGO DEBE SER MAYOR A 0');
+        setAlertPayment('EL PAGO DEBE SER MAYOR A 0');
+        return;
       }
 
       await checkGPSEnabled();
@@ -259,13 +256,13 @@ const SaleDetails = () => {
       }
 
       getSaleAgain();
-      goToPayment(id);
+      goToPayment(id, true);
       setModalVisible(!modalVisible);
     } catch (err) {
       console.log('Error al guardar el pago', err);
     } finally {
       setLoadingSave(false);
-      refLoadingSave.current = true;
+      refLoadingSave.current = false;
     }
   }, [
     requestLocationPermission,
@@ -277,14 +274,20 @@ const SaleDetails = () => {
     getSaleAgain,
     goToPayment,
     userData,
+    modalVisible,
+    updatePaymentCoords,
   ]);
+
+  const goToNotice = (saleId: number) => {
+    navigation.navigate('Notice', {saleId: saleId});
+  };
 
   const handleAddVisita = useCallback(() => {
     if (refLoadingSave.current) return;
-    setLoadingSave(() => {
-      refLoadingSave.current = true;
-      return true;
-    });
+
+    refLoadingSave.current = true;
+    setLoadingSave(true);
+
     requestLocationPermission().then(() => {
       getAccuratePosition()
         .then(async info => {
@@ -304,6 +307,7 @@ const SaleDetails = () => {
             ID: uuid.v4().toString(),
             IMPTE_DOCTO_CC_ID: sale.DOCTO_CC_ACR_ID,
           };
+
           try {
             await sendVisita(
               data,
@@ -311,25 +315,28 @@ const SaleDetails = () => {
               selectedNotaVisita,
               sale.DOCTO_CC_ACR_ID,
               false,
+              fechaReagendada
+                ? dayjs(fechaReagendada).toISOString()
+                : undefined,
             );
             updateVisitaCoords(data);
             setModalVisitaVisible(false);
+
+            Alert.alert(
+              'Imprimir ticket de visita',
+              '¿Desea imprimir un ticket de visita?',
+              [
+                {text: 'Imprimir', onPress: () => goToNotice(saleId)},
+                {text: 'Cerrar', onPress: () => {}},
+              ],
+              {cancelable: false},
+            );
           } catch (e) {
             console.error('Error adding document: ', e);
+          } finally {
+            setLoadingSave(false);
+            refLoadingSave.current = false;
           }
-          Alert.alert(
-            'Imprimir ticket de visita',
-            '¿Desea imprimir un ticket de visita?',
-            [
-              {text: 'Imprimir', onPress: () => goToNotice(saleId)},
-              {
-                text: 'Cerrar', // Texto del botón
-                onPress: () => {},
-              },
-            ],
-            {cancelable: false},
-          );
-          setModalVisitaVisible(false);
         })
         .catch(err => {
           Alert.alert(
@@ -341,8 +348,6 @@ const SaleDetails = () => {
           refLoadingSave.current = false;
         });
     });
-    setLoadingSave(false);
-    refLoadingSave.current = false;
   }, [
     requestLocationPermission,
     getAccuratePosition,
@@ -351,6 +356,10 @@ const SaleDetails = () => {
     selectedNotaVisita,
     selectedFormaCobro,
     userData,
+    saleId,
+    goToNotice,
+    sendVisita,
+    updateVisitaCoords,
   ]);
 
   const handleOpenCondonacionModal = () => {
@@ -444,13 +453,13 @@ const SaleDetails = () => {
     [sale.SALDO_REST, sale.PARCIALIDAD],
   );
 
-  function goToPayment(paymentId: string) {
-    navigation.navigate('Payment', {paymentId: paymentId, saleId: saleId});
+  function goToPayment(paymentId: string, sendByWhatsapp = false) {
+    navigation.navigate('Payment', {
+      paymentId: paymentId,
+      saleId: saleId,
+      sendByWhatsapp: sendByWhatsapp,
+    });
   }
-
-  const goToNotice = (saleId: number) => {
-    navigation.navigate('Notice', {saleId: saleId});
-  };
 
   const paymentsOrder = useMemo(() => {
     return [...sale.pagos].sort(
@@ -459,6 +468,26 @@ const SaleDetails = () => {
         new Date(a.FECHA_HORA_PAGO).getTime(),
     );
   }, [sale.pagos]);
+
+  const paymentsGroupedByMonth = useMemo(() => {
+    const groups: Record<string, PagoServer[]> = {};
+
+    for (const pago of paymentsOrder) {
+      const fecha = dayjs(pago.FECHA_HORA_PAGO);
+      const key = fecha.format('MMMM YYYY').toUpperCase();
+
+      if (!groups[key]) {
+        groups[key] = [];
+      }
+
+      groups[key].push(pago);
+    }
+
+    return Object.entries(groups).map(([title, data]) => ({
+      title,
+      data,
+    }));
+  }, [paymentsOrder]);
 
   const cantsRepeat = useMemo(() => {
     return sale.pagos.reduce((acc: number[], pago) => {
@@ -1105,10 +1134,10 @@ const SaleDetails = () => {
               onValueChange={value => setSelectedNotaVisita(value)}
               items={[
                 {label: '🟡 No se encontraba', value: NO_SE_ENCONTRABA},
+                {label: '📆 Pidió reagendar visita', value: PIDE_REAGENDAR},
+                {label: '🚫 No pagará esta ocasión', value: NO_VA_A_DAR_PAGO},
                 {label: '🔒 Casa cerrada con candado', value: CASA_CERRADA},
                 {label: '👶 Solo había menores', value: SOLO_MENORES},
-                {label: '🚫 Dijo que no va a pagar', value: NO_VA_A_DAR_PAGO},
-                {label: '🕒 Pidió que regrese otro día', value: PIDE_TIEMPO},
                 {
                   label: '💸 Tiene dinero pero no quiso pagar',
                   value: TIENE_PERO_NO_PAGA,
@@ -1120,7 +1149,6 @@ const SaleDetails = () => {
                   label: '🔇 Se escuchan ruidos pero no abre',
                   value: SE_ESCUCHAN_RUIDOS,
                 },
-                {label: '📆 Pidió reagendar visita', value: PIDE_REAGENDAR},
               ]}
               style={{
                 inputAndroid: {
@@ -1176,17 +1204,13 @@ const SaleDetails = () => {
               ]}
               onPress={handleAddVisita}
               disabled={loadingSave}>
-              <Text style={saleDetailsStyles.addPaymentButtonText}>
-                {loadingSave && (
-                  <ActivityIndicator size="small" color="white" />
-                )}
+              {loadingSave && <ActivityIndicator size="small" color="white" />}
 
-                {!loadingSave && (
-                  <Text style={saleDetailsStyles.addPaymentButtonText}>
-                    Agregar
-                  </Text>
-                )}
-              </Text>
+              {!loadingSave && (
+                <Text style={saleDetailsStyles.addPaymentButtonText}>
+                  Agregar
+                </Text>
+              )}
             </Pressable>
             <Pressable
               style={[
@@ -1249,11 +1273,25 @@ const SaleDetails = () => {
       </Modal>
 
       <View style={saleDetailsStyles.payments}>
-        <Text style={[saleDetailsStyles.subtitle, {marginBottom: 20}]}>
+        <Text style={[saleDetailsStyles.subtitle, {marginBottom: 0}]}>
           Historial de pagos
         </Text>
-        <FlatList
-          data={paymentsOrder}
+        <SectionList
+          sections={paymentsGroupedByMonth}
+          renderSectionHeader={({section: {title}}) => (
+            <View style={{padding: 8, marginTop: 10}}>
+              <Text
+                style={{
+                  fontWeight: 'bold',
+                  fontSize: 20,
+                  color: 'black',
+                  paddingHorizontal: 20,
+                }}>
+                {title}
+              </Text>
+            </View>
+          )}
+          stickySectionHeadersEnabled={true}
           keyExtractor={item => item.ID}
           ItemSeparatorComponent={() => <View style={{height: 5}} />}
           scrollEnabled={false}
@@ -1307,9 +1345,7 @@ const PaymentItem = memo(
               dayjs(payment.FECHA_HORA_PAGO),
             )
               ? require('../../../../../assets/bg-gradient-green.png')
-              : dayjs(payment.FECHA_HORA_PAGO).month() % 2 === 0
-              ? require('../../../../../assets/bg-white-gradient.png')
-              : require('../../../../../assets/bg-gradient-blue-light.png')
+              : require('../../../../../assets/bg-white-gradient.png')
           }
           resizeMode="cover">
           <View style={{width: '80%'}}>

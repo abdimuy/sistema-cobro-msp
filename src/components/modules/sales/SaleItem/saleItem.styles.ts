@@ -31,11 +31,11 @@ const saleItemStyles = StyleSheet.create({
   },
   details: {
     display: 'flex',
-    flexDirection: 'row',
+    flexDirection: 'column',
     gap: 15,
   },
   detailsIcons: {
-    flexDirection: 'column',
+    flexDirection: 'row',
     gap: 16,
   },
   iconContainer: {
@@ -50,7 +50,6 @@ const saleItemStyles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 10,
-    //Box Shadow green big
     shadowColor: 'green',
     shadowOffset: {
       width: 0,
@@ -59,6 +58,7 @@ const saleItemStyles = StyleSheet.create({
     shadowOpacity: 0.99,
     shadowRadius: 25,
     elevation: 16,
+    height: 35,
   },
   badgeNew: {
     color: '#03543f',
