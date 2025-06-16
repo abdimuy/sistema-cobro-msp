@@ -33,8 +33,9 @@ import {
   VisitaType,
 } from './src/components/modules/sales/SaleDetails/SaleDetails';
 import sendPago from './src/services/sendPago';
-import {Transaction} from 'react-native-sqlite-storage';
+import {SQLiteDatabase, Transaction} from 'react-native-sqlite-storage';
 import sendVisita, {VisitaLocal} from './src/services/sendVisita';
+import {setupSync as initSync} from './src/services/syncService';
 
 export type RootDrawerParamList = {
   Home: undefined;
@@ -46,6 +47,48 @@ export type RootDrawerParamList = {
   weeklyReport: undefined;
   Login: undefined;
   RouteMap: undefined;
+};
+
+const createIndexes = async (db: SQLiteDatabase) => {
+  return new Promise((resolve, reject) => {
+    db.transaction(
+      tx => {
+        const indexes = [
+          {table: 'pagos', column: 'DOCTO_CC_ID'},
+          {table: 'pagos', column: 'FECHA_HORA_PAGO'},
+          {table: 'ventas', column: 'CLIENTE_ID'},
+          {table: 'ventas', column: 'DOCTO_CC_ACR_ID'},
+          {table: 'ventas', column: 'DOCTO_CC_ID'},
+          {table: 'ventas', column: 'FECHA'},
+          {table: 'productos', column: 'ARTICULO_ID'},
+          {table: 'productos', column: 'FOLIO'},
+        ];
+        indexes.forEach(idx => {
+          tx.executeSql(
+            `CREATE INDEX IF NOT EXISTS idx_${idx.table}_${idx.column} ON ${idx.table}(${idx.column});`,
+            [],
+            () =>
+              console.log(
+                `Índice idx_${idx.table}_${idx.column} creado correctamente.`,
+              ),
+            error =>
+              console.error(
+                `Error creando índice idx_${idx.table}_${idx.column}:`,
+                error,
+              ),
+          );
+        });
+      },
+      error => {
+        console.error('Error creando índices:', error);
+        reject(error);
+      },
+      () => {
+        console.log('Índices creados.');
+        resolve('Índices creados');
+      },
+    );
+  });
 };
 
 const Drawer = createDrawerNavigator<RootDrawerParamList>();
@@ -120,15 +163,21 @@ const AuthProvider = ({children}: {children: React.ReactNode}) => {
   };
 
   const updateVisitaCoords = (visita: VisitaLocal) => {
+    console.log('updateVisitaCoords iniciado en', new Date().toISOString());
     requestLocationPermission().then(async () => {
+      const startTime = Date.now();
       try {
+        console.log('Obteniendo posición...');
         const position = await getAccuratePosition();
+        console.log('Posición obtenida en', Date.now() - startTime, 'ms');
 
         const editVisita: VisitaLocal = {
           ...visita,
           LAT: position.coords.latitude,
           LNG: position.coords.longitude,
         };
+
+        console.log('Enviando visita (update) con nueva posición...');
         await sendVisita(
           editVisita,
           false,
@@ -143,9 +192,13 @@ const AuthProvider = ({children}: {children: React.ReactNode}) => {
               LNG = ${position.coords.longitude}
           WHERE ID = '${visita.ID}'
         `);
-        console.log('El pago se ha enviado al servidor');
+        console.log(
+          'updateVisitaCoords finalizado en',
+          Date.now() - startTime,
+          'ms',
+        );
       } catch (err) {
-        console.log('Error al guardar el pago', err);
+        console.log('Error en updateVisitaCoords:', err);
       }
     });
   };
@@ -241,6 +294,7 @@ function RootNav() {
   }, [user]);
 
   useEffect(() => {
+    initSync();
     const asyncFunc = () => {
       sendPagosNotSent(
         false,
@@ -414,7 +468,14 @@ const App = () => {
   const initDb = async () => {
     const db = await openDatabase();
     const columns: {
-      table: 'pagos' | 'ventas' | 'productos' | 'visitas';
+      table:
+        | 'pagos'
+        | 'ventas'
+        | 'productos'
+        | 'visitas'
+        | 'garantias'
+        | 'garantia_imagenes'
+        | 'garantia_eventos';
       column: string;
       complement: string;
     }[] = [
@@ -510,6 +571,86 @@ const App = () => {
       },
       {table: 'visitas', column: 'IMPTE_DOCTO_CC_ID', complement: 'INTEGER'},
       {table: 'visitas', column: 'GUARDADO_EN_MICROSIP', complement: 'INT'},
+      {
+        table: 'garantias',
+        column: 'EXTERNAL_ID',
+        complement: 'TEXT    NOT NULL',
+      },
+      {
+        table: 'garantias',
+        column: 'DOCTO_CC_ID',
+        complement: 'INTEGER NOT NULL',
+      },
+      {
+        table: 'garantias',
+        column: 'ESTADO',
+        complement: "TEXT    NOT NULL DEFAULT 'PENDIENTE'",
+      },
+      {
+        table: 'garantias',
+        column: 'DESCRIPCION',
+        complement: 'TEXT    NOT NULL',
+      },
+      {table: 'garantias', column: 'OBSERVACIONES', complement: 'TEXT'},
+      {table: 'garantias', column: 'UPLOADED', complement: 'INTEGER DEFAULT 0'},
+      {table: 'garantias', column: 'FECHA_SOLICITUD', complement: 'TEXT'}, // ISO string
+      {table: 'garantias', column: 'ID', complement: 'INTEGER'},
+      {
+        table: 'garantia_imagenes',
+        column: 'ID',
+        complement: 'TEXT',
+      },
+      {
+        table: 'garantia_imagenes',
+        column: 'GARANTIA_ID',
+        complement: 'INTEGER NOT NULL',
+      },
+      {
+        table: 'garantia_imagenes',
+        column: 'IMG_PATH',
+        complement: 'TEXT    NOT NULL',
+      },
+      {
+        table: 'garantia_imagenes',
+        column: 'IMG_MIME',
+        complement: 'TEXT    NOT NULL',
+      },
+      {table: 'garantia_imagenes', column: 'IMG_DESC', complement: 'TEXT'},
+      {
+        table: 'garantia_imagenes',
+        column: 'FECHA_SUBIDA',
+        complement: 'TEXT',
+      }, // ISO string
+      {
+        table: 'garantia_eventos',
+        column: 'ID',
+        complement: 'TEXT NOT NULL',
+      },
+      {
+        table: 'garantia_eventos',
+        column: 'GARANTIA_ID',
+        complement: 'TEXT NOT NULL',
+      },
+      {
+        table: 'garantia_eventos',
+        column: 'TIPO_EVENTO',
+        complement: 'TEXT NOT NULL',
+      },
+      {
+        table: 'garantia_eventos',
+        column: 'FECHA_EVENTO',
+        complement: 'TEXT NOT NULL',
+      },
+      {
+        table: 'garantia_eventos',
+        column: 'COMENTARIO',
+        complement: 'TEXT',
+      },
+      {
+        table: 'garantia_eventos',
+        column: 'ENVIADO',
+        complement: 'INTEGER DEFAULT 0',
+      },
     ];
 
     const ensureTableExists = (
@@ -589,6 +730,8 @@ const App = () => {
                 },
               );
             });
+
+            // Luego de migrar las tablas, agrega los índices
           },
           error => {
             console.log('Error en la migración de la base de datos:', error);
@@ -603,114 +746,7 @@ const App = () => {
     };
 
     await checkAndMigrateDatabase();
-
-    // await db.transaction(tx => {
-    //   tx.executeSql(
-    //     `CREATE TABLE IF NOT EXISTS pagos
-    //         (
-    //             ID TEXT,
-    //             CLIENTE_ID INT,
-    //             NOMBRE_CLIENTE TEXT,
-    //             COBRADOR TEXT,
-    //             COBRADOR_ID INT,
-    //             DOCTO_CC_ID INT,
-    //             DOCTO_CC_ACR_ID INT,
-    //             FECHA_HORA_PAGO TEXT,
-    //             FORMA_COBRO_ID INT,
-    //             ZONA_CLIENTE_ID INT,
-    //             IMPORTE REAL,
-    //             LAT REAL,
-    //             LNG REAL,
-    //             GUARDADO_EN_MICROSIP INT
-    //         )
-    //     `,
-    //   ).then(response => {
-    //     console.log('Response', response);
-    //   });
-    // });
-
-    // await db.transaction(tx => {
-    //   tx.executeSql(
-    //     `CREATE TABLE IF NOT EXISTS ventas (
-    //       DOCTO_CC_ACR_ID INTEGER,
-    //       DOCTO_CC_ID INTEGER,
-    //       FOLIO TEXT,
-    //       CLIENTE_ID INTEGER,
-    //       APLICADO TEXT,
-    //       COBRADOR_ID INTEGER,
-    //       CLIENTE TEXT,
-    //       ZONA_CLIENTE_ID INTEGER,
-    //       LIMITE_CREDITO REAL,
-    //       NOTAS TEXT,
-    //       ZONA_NOMBRE TEXT,
-    //       IMPORTE_PAGO_PROMEDIO REAL,
-    //       TOTAL_IMPORTE REAL,
-    //       NUM_IMPORTES INTEGER,
-    //       FECHA TEXT,  -- Formato ISO 8601 (YYYY-MM-DD HH:MM:SS)
-    //       PARCIALIDAD REAL,
-    //       ENGANCHE REAL,
-    //       TIEMPO_A_CORTO_PLAZOMESES INTEGER,
-    //       MONTO_A_CORTO_PLAZO REAL,
-    //       VENDEDOR_1 TEXT,
-    //       VENDEDOR_2 TEXT,
-    //       VENDEDOR_3 TEXT,
-    //       PRECIO_TOTAL REAL,
-    //       IMPTE_REST REAL,
-    //       SALDO_REST REAL,
-    //       FECHA_ULT_PAGO TEXT,  -- Formato ISO 8601 (YYYY-MM-DD HH:MM:SS)
-    //       CALLE TEXT,
-    //       CIUDAD TEXT,
-    //       ESTADO TEXT,
-    //       TELEFONO TEXT,
-    //       NOMBRE_COBRADOR TEXT,
-    //       ESTADO_COBRANZA TEXT,
-    //       DIA_COBRANZA TEXT,
-    //       DIA_TEMPORAL_COBRANZA TEXT,
-    //       AVAL_O_RESPONSABLE TEXT,
-    //       PRECIO_DE_CONTADO REAL,
-    //       FREC_PAGO TEXT
-    //     );`,
-    //   ).then(response => {
-    //     console.log('Response', response);
-    //   });
-    // });
-
-    // await db.transaction(tx => {
-    //   tx.executeSql(
-    //     `CREATE TABLE IF NOT EXISTS productos (
-    //       ARTICULO TEXT,
-    //       ARTICULO_ID INTEGER,
-    //       CANTIDAD INTEGER,
-    //       DOCTO_PV_DET_ID INTEGER,
-    //       DOCTO_PV_ID INTEGER,
-    //       FOLIO TEXT,
-    //       POSICION INTEGER,
-    //       PRECIO_TOTAL_NETO REAL,
-    //       PRECIO_UNITARIO_IMPTO REAL
-    //     );`,
-    //   );
-    // });
-
-    // await db.transaction(tx => {
-    //   tx.executeSql(
-    //     `
-    //       CREATE TABLE IF NOT EXISTS visitas (
-    //         ID                   TEXT NOT NULL,
-    //         CLIENTE_ID           INTEGER NOT NULL,
-    //         COBRADOR             TEXT NOT NULL DEFAULT '',
-    //         COBRADOR_ID          INTEGER NOT NULL,
-    //         FECHA                TEXT NOT NULL,
-    //         FORMA_COBRO_ID       INTEGER NOT NULL,
-    //         LAT                  REAL NOT NULL,
-    //         LNG                  REAL NOT NULL,
-    //         NOTA                 TEXT,
-    //         TIPO_VISITA          TEXT NOT NULL,
-    //         ZONA_CLIENTE_ID      INTEGER NOT NULL,
-    //         IMPTE_DOCTO_CC_ID    INTERGER
-    //         GUARDADO_EN_MICROSIP INT
-    //     );`,
-    //   );
-    // });
+    await createIndexes(db);
 
     return db;
   };
@@ -748,26 +784,6 @@ const App = () => {
         console.log('Firestore initialized');
       });
   }, []);
-
-  // if (!bluetoothEnabled) {
-  //   return (
-  //     <View style={{flex: 1, justifyContent: 'center', alignItems: 'center'}}>
-  //       <Text style={{fontSize: 20, textAlign: 'center'}}>
-  //         Esta aplicación requiere Bluetooth. Por favor actívalo.
-  //       </Text>
-  //     </View>
-  //   );
-  // }
-
-  // if (!gpsEnabled) {
-  //   return (
-  //     <View style={{flex: 1, justifyContent: 'center', alignItems: 'center'}}>
-  //       <Text style={{fontSize: 20, textAlign: 'center'}}>
-  //         Esta aplicación requiere GPS. Por favor actívalo.
-  //       </Text>
-  //     </View>
-  //   );
-  // }
 
   return <AuthProvider>{<RootNav />}</AuthProvider>;
   // return <AuthProvider>{render && <RootNav />}</AuthProvider>;

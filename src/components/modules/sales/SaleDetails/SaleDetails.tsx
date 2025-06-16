@@ -35,7 +35,12 @@ import RNPickerSelect from 'react-native-picker-select';
 import {AuthContext} from '../../../../../App';
 import useGetSale from '../../../../hooks/useGetSale';
 import {SalesStackParamList} from '../../../../routes/SalesRoutes';
-import {RouteProp, useNavigation, useRoute} from '@react-navigation/native';
+import {
+  RouteProp,
+  useFocusEffect,
+  useNavigation,
+  useRoute,
+} from '@react-navigation/native';
 import {StackNavigationProp} from '@react-navigation/stack';
 import useGetProductosByFolio from '../../../../hooks/useGetProductosByFolio';
 import {PagoServer} from '../../../../screens/home/Home';
@@ -51,6 +56,12 @@ import getAccuratePosition, {
 } from '../../../../utils/geolocation/getAccuratePosition';
 import {DateTimePickerAndroid} from '@react-native-community/datetimepicker';
 import {Button} from '@gluestack-ui/themed';
+import {useGetGarantiaBySale} from '../../../../hooks/useGetGarantiaBySale';
+import {
+  entregarProductoAlCliente,
+  getAllEventos,
+  getAllGarantias,
+} from '../../../../services/garantiaService';
 
 dayjs.extend(relativeTime);
 dayjs.locale('es');
@@ -163,6 +174,7 @@ const SaleDetails = () => {
   const [alertPayment, setAlertPayment] = useState<string>('');
   const [fechaReagendada, setFechaReagendada] = useState<Date | null>(null);
   const [showAllLocations, setShowAllLocations] = useState<boolean>(false);
+  const {garantia, fetchGarantia} = useGetGarantiaBySale(saleId);
   const coords = useMemo(
     () => sale.pagos.map(pago => [Number(pago.LAT), Number(pago.LNG)]),
     [sale.pagos],
@@ -213,6 +225,10 @@ const SaleDetails = () => {
     setModalVisible(true);
     setPayment(0);
   };
+
+  useFocusEffect(() => {
+    fetchGarantia();
+  });
 
   const handleAddPayment = useCallback(async () => {
     if (refLoadingSave.current) return;
@@ -288,66 +304,68 @@ const SaleDetails = () => {
     refLoadingSave.current = true;
     setLoadingSave(true);
 
-    requestLocationPermission().then(() => {
-      getAccuratePosition()
-        .then(async info => {
-          const lat = info.coords.latitude;
-          const lng = info.coords.longitude;
-          const data: VisitaLocal = {
-            CLIENTE_ID: sale.CLIENTE_ID,
-            FECHA: dayjs().toISOString(),
-            COBRADOR: sale.NOMBRE_COBRADOR,
-            COBRADOR_ID: userData.COBRADOR_ID,
-            LAT: lat,
-            LNG: lng,
-            NOTA: notaVisita,
-            TIPO_VISITA: selectedNotaVisita,
-            FORMA_COBRO_ID: selectedFormaCobro,
-            ZONA_CLIENTE_ID: sale.ZONA_CLIENTE_ID,
-            ID: uuid.v4().toString(),
-            IMPTE_DOCTO_CC_ID: sale.DOCTO_CC_ACR_ID,
-          };
+    requestLocationPermission()
+      .then(async () => {
+        const data: VisitaLocal = {
+          CLIENTE_ID: sale.CLIENTE_ID,
+          FECHA: dayjs().toISOString(),
+          COBRADOR: sale.NOMBRE_COBRADOR,
+          COBRADOR_ID: userData.COBRADOR_ID,
+          LAT: 0,
+          LNG: 0,
+          NOTA: notaVisita,
+          TIPO_VISITA: selectedNotaVisita,
+          FORMA_COBRO_ID: selectedFormaCobro,
+          ZONA_CLIENTE_ID: sale.ZONA_CLIENTE_ID,
+          ID: uuid.v4().toString(),
+          IMPTE_DOCTO_CC_ID: sale.DOCTO_CC_ACR_ID,
+        };
 
-          try {
-            await sendVisita(
-              data,
-              true,
-              selectedNotaVisita,
-              sale.DOCTO_CC_ACR_ID,
-              false,
-              fechaReagendada
-                ? dayjs(fechaReagendada).toISOString()
-                : undefined,
-            );
-            updateVisitaCoords(data);
-            setModalVisitaVisible(false);
+        console.log('Inicio sendVisita', new Date().toISOString());
+        const startTime = Date.now();
 
-            Alert.alert(
-              'Imprimir ticket de visita',
-              '¿Desea imprimir un ticket de visita?',
-              [
-                {text: 'Imprimir', onPress: () => goToNotice(saleId)},
-                {text: 'Cerrar', onPress: () => {}},
-              ],
-              {cancelable: false},
-            );
-          } catch (e) {
-            console.error('Error adding document: ', e);
-          } finally {
-            setLoadingSave(false);
-            refLoadingSave.current = false;
-          }
-        })
-        .catch(err => {
-          Alert.alert(
-            'Error al obtener la ubicación',
-            'No se ha podido obtener la ubicación actual, por lo que LA VISITA NO SE HA GUARDADO',
+        try {
+          await sendVisita(
+            data,
+            true,
+            selectedNotaVisita,
+            sale.DOCTO_CC_ACR_ID,
+            false,
+            fechaReagendada ? dayjs(fechaReagendada).toISOString() : undefined,
           );
-          console.log('Error al obtener la ubicación:', err);
+          const duration = Date.now() - startTime;
+
+          console.log(`sendVisita finalizó en ${duration} ms`);
+
+          console.log('Llamando updateVisitaCoords', new Date().toISOString());
+          // updateVisitaCoords se ejecuta en background
+          updateVisitaCoords(data);
+        } catch (e) {
+          console.error('Error en sendVisita:', e);
+        } finally {
+          setModalVisitaVisible(false);
+          Alert.alert(
+            'Imprimir ticket de visita',
+            '¿Desea imprimir un ticket de visita?',
+            [
+              {text: 'Imprimir', onPress: () => goToNotice(saleId)},
+              {text: 'Cerrar', onPress: () => {}},
+            ],
+            {cancelable: false},
+          );
           setLoadingSave(false);
           refLoadingSave.current = false;
-        });
-    });
+        }
+      })
+      .catch(err => {
+        Alert.alert(
+          'Error al obtener la ubicación',
+          'No se ha podido obtener la ubicación actual, por lo que LA VISITA NO SE HA GUARDADO',
+        );
+        console.log('Error al obtener la ubicación:', err);
+        setLoadingSave(false);
+        refLoadingSave.current = false;
+      });
   }, [
     requestLocationPermission,
     getAccuratePosition,
@@ -590,6 +608,27 @@ const SaleDetails = () => {
     }
   };
 
+  const handleEntregarProducto = () => {
+    Alert.alert(
+      'Confirmación',
+      '¿Estás seguro de entregar el producto al cliente?',
+      [
+        {text: 'Cancelar', style: 'cancel'},
+        {
+          text: 'Sí',
+          onPress: async () => {
+            try {
+              await entregarProductoAlCliente(garantia?.ID || 0, '');
+            } catch (error) {
+              console.error('Error entregando producto al cliente:', error);
+            }
+          },
+        },
+      ],
+      {cancelable: true},
+    );
+  };
+
   if (loading) {
     return (
       <View style={saleDetailsStyles.loaderContainer}>
@@ -610,6 +649,7 @@ const SaleDetails = () => {
         <View style={saleDetailsStyles.titleContainer}>
           <Text style={saleDetailsStyles.title}>{sale.CLIENTE}</Text>
           <Text style={saleDetailsStyles.textPrimary}>{sale.FOLIO}</Text>
+          <Text style={saleDetailsStyles.textTertiary}>{sale.DOCTO_CC_ID}</Text>
         </View>
       </View>
       <Modal
@@ -871,24 +911,100 @@ const SaleDetails = () => {
           )}
 
         <Text style={saleDetailsStyles.subtitle}>Productos</Text>
-        {productos.map((producto: Producto) => (
-          <View style={saleDetailsStyles.productoItem} key={producto.POSICION}>
-            <Text
-              style={[
-                saleDetailsStyles.textSecondary,
-                saleDetailsStyles.productItemName,
-              ]}>
-              {producto.CANTIDAD} - {producto.ARTICULO}
+        <View style={{gap: 10, marginHorizontal: 20, marginBottom: 10}}>
+          {productos.map((producto: Producto) => (
+            <View
+              style={saleDetailsStyles.productoItem}
+              key={producto.POSICION}>
+              <Text
+                style={[
+                  saleDetailsStyles.textSecondary,
+                  saleDetailsStyles.productItemName,
+                ]}>
+                {producto.CANTIDAD} - {producto.ARTICULO}
+              </Text>
+              <Text
+                style={[
+                  saleDetailsStyles.textSecondary,
+                  saleDetailsStyles.productoItemPrice,
+                ]}>
+                ${producto.PRECIO_UNITARIO_IMPTO}
+              </Text>
+            </View>
+          ))}
+        </View>
+        {garantia ? (
+          <>
+            <View
+              style={{
+                borderRadius: 10,
+                padding: 15,
+                backgroundColor: '#198754',
+                marginBottom: 10,
+                marginHorizontal: 20,
+              }}>
+              <Text
+                style={{
+                  fontSize: 24,
+                  fontWeight: 'bold',
+                  marginBottom: 10,
+                  color: 'white',
+                  textAlign: 'center',
+                }}>
+                Garantía Activa
+              </Text>
+              <Text
+                style={{
+                  fontSize: 18,
+                  color: 'white',
+                  textAlign: 'center',
+                  marginBottom: 10,
+                }}>
+                Se encuentra una garantía actualmente activa.
+              </Text>
+              <Text
+                style={{
+                  fontSize: 20,
+                  color: 'white',
+                  fontWeight: 'bold',
+                  textAlign: 'center',
+                }}>
+                {garantia.ESTADO}
+              </Text>
+            </View>
+
+            {garantia.ESTADO === 'LISTO_RETIRO' && (
+              <Pressable
+                style={saleDetailsStyles.ghostButton}
+                onPress={() => {
+                  handleEntregarProducto();
+                }}>
+                <Text style={saleDetailsStyles.ghostButtonText}>
+                  Producto entregado al cliente
+                </Text>
+              </Pressable>
+            )}
+          </>
+        ) : (
+          <Pressable
+            style={saleDetailsStyles.ghostButton}
+            onPress={() => {
+              navigation.navigate('Garantias', {
+                saleId: sale.DOCTO_CC_ID,
+              });
+            }}>
+            <Text style={saleDetailsStyles.ghostButtonText}>
+              INICIAR GARANTIA
             </Text>
-            <Text
-              style={[
-                saleDetailsStyles.textSecondary,
-                saleDetailsStyles.productoItemPrice,
-              ]}>
-              ${producto.PRECIO_UNITARIO_IMPTO}
-            </Text>
-          </View>
-        ))}
+          </Pressable>
+        )}
+        {/* <Pressable
+          style={saleDetailsStyles.ghostButton}
+          onPress={showAllEvents}>
+          <Text style={saleDetailsStyles.ghostButtonText}>
+            Ver todas las garantías
+          </Text>
+        </Pressable> */}
       </View>
 
       {otherSales.length > 0 && (

@@ -188,6 +188,7 @@ TEL: ${userData.TELEFONO}
           marginVertical: 10,
         }}>
         <Picker
+          style={{color: 'black'}}
           selectedValue={typeTicket}
           onValueChange={value => {
             setTypeTicket(value);

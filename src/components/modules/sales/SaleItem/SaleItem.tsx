@@ -1,7 +1,7 @@
 import {View, Text, TouchableOpacity} from 'react-native';
 import React, {memo, useMemo} from 'react';
 import saleItemStyles from './saleItem.styles';
-import {PRIMARY_COLOR, TEXT_COLOR_SECONDARY} from '../../../../contants/colors';
+import {PRIMARY_COLOR} from '../../../../contants/colors';
 import ProgressBar from '../../../common/ProgressBar/ProgressBar';
 import {
   CheckIcon,

@@ -50,6 +50,13 @@ import {SaleWithProductos} from '../../services/getSaleLocal';
 import truncarNumero from '../../utils/math/trucarNumero';
 import useGetAPIConfig from '../../hooks/useGetAPIConfig';
 import saleItemStyles from '../../components/modules/sales/SaleItem/saleItem.styles';
+import {
+  EventoGarantia,
+  GarantiaRecord,
+  GarantiaServerResponse,
+  getEventosGarantiasPendientes,
+  getPendingGarantias,
+} from '../../services/garantiaService';
 
 dayjs.extend(relativeTime);
 dayjs.locale('es');
@@ -176,7 +183,6 @@ const Home = () => {
   useEffect(() => {
     getSalesLocal(false)
       .then(sales => {
-        console.log('Ventas obtenidas');
         setSales(sales);
       })
       .catch(err => {
@@ -409,8 +415,15 @@ const Home = () => {
         dayjs(userData.FECHA_CARGA_INICIAL.toDate().toISOString()),
       );
       const visitasNotSent = await getUnsynchronizedLocalVisitas();
+      const garantiasNotSent = await getPendingGarantias();
+      const eventosGarantiasNotSent = await getEventosGarantiasPendientes();
 
-      if (pagosNotSent.length > 0 || visitasNotSent.length > 0) {
+      if (
+        pagosNotSent.length > 0 ||
+        visitasNotSent.length > 0 ||
+        garantiasNotSent.length > 0 ||
+        eventosGarantiasNotSent.length > 0
+      ) {
         Alert.alert(
           'No se puede actualizar los datos',
           'Aún hay pagos o visitas sin enviar, envíalos antes de realizar la carga inicial',
@@ -442,6 +455,8 @@ const Home = () => {
           ventas: SaleServer[];
           pagos: PagoServer[];
           productos: Producto[];
+          garantias: GarantiaServerResponse[];
+          eventosGarantias: EventoGarantia[];
         };
       }>(url);
       const dbSqlite = await openDatabase();
@@ -470,6 +485,12 @@ const Home = () => {
       `);
       await dbSqlite.executeSql(`
         DELETE FROM visitas;
+      `);
+      await dbSqlite.executeSql(`
+        DELETE FROM garantia_eventos;
+      `);
+      await dbSqlite.executeSql(`
+        DELETE FROM garantias;
       `);
 
       let ventas = serverData.data.body.ventas;
@@ -654,9 +675,68 @@ const Home = () => {
 
       await dbSqlite.executeSql(queryProductos);
 
-      // getPagos();
-      // getPagosHoy();
-      // getSalesLocal(false);
+      const garantias = serverData.data.body.garantias;
+      const eventosGarantias = serverData.data.body.eventosGarantias || [];
+
+      const queryEventosGarantias = `
+        INSERT INTO garantia_eventos (
+          ID,
+          GARANTIA_ID,
+          TIPO_EVENTO,
+          FECHA_EVENTO,
+          COMENTARIO,
+          ENVIADO
+        ) VALUES ${eventosGarantias
+          .map(
+            e => `(
+            '${e.ID}',
+            '${e.GARANTIA_ID}',
+            '${(e.TIPO_EVENTO || '').replace(/'/g, "''")}',
+            '${e.FECHA_EVENTO}',
+            ${e.COMENTARIO ? `'${e.COMENTARIO.replace(/'/g, "''")}'` : 'NULL'},
+            1
+          )`,
+          )
+          .join(',\n')};
+      `;
+
+      if (eventosGarantias.length > 0)
+        await dbSqlite.executeSql(queryEventosGarantias);
+      const queryGarantias = `
+        INSERT INTO garantias (
+          ID,
+          DOCTO_CC_ID,
+          FECHA_SOLICITUD,
+          DESCRIPCION,
+          OBSERVACIONES,
+          EXTERNAL_ID,
+          ESTADO,
+          UPLOADED
+        ) VALUES ${garantias
+          .map(
+            g => `(
+            '${g.ID}',
+            ${g.DOCTO_CC_ID},
+            '${g.FECHA_SOLICITUD}',
+            '${(g.DESCRIPCION_FALLA || '').replace(/'/g, "''")}',
+            ${
+              g.OBSERVACIONES
+                ? `'${g.OBSERVACIONES.replace(/'/g, "''")}'`
+                : 'NULL'
+            },
+            '${g.EXTERNAL_ID}',
+            '${(g.ESTADO || '').replace(/'/g, "''")}',
+            1
+          )`,
+          )
+          .join(',\n')};
+      `;
+
+      if (garantias.length > 0) await dbSqlite.executeSql(queryGarantias);
+
+      await getPagos();
+      await getPagosHoy();
+      await getSalesLocal(false);
 
       Alert.alert('Datos obtenidos del servidor correctamente');
 
@@ -1180,7 +1260,7 @@ const Home = () => {
 
       <View style={{marginVertical: 10, gap: 4}}>
         <Text style={{color: 'gray', textAlign: 'center', fontSize: 20}}>
-          Version: 1.0.8
+          Version: 1.0.10
         </Text>
         <Text style={{color: 'gray', textAlign: 'center', fontSize: 18}}>
           API URL: {baseURL}

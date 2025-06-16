@@ -37,9 +37,14 @@ const sendVisita = async (
   sendToServer: boolean = true,
   diaVolverVisitar?: string,
 ): Promise<string> => {
+  const startFunction = Date.now();
   const db = await openDatabase();
+  console.log(
+    `[sendVisita] Base de datos abierta en ${Date.now() - startFunction} ms`,
+  );
 
   if (insertInLocalDB) {
+    const startInsert = Date.now();
     const sql = `
         INSERT INTO visitas (ID, CLIENTE_ID, COBRADOR, COBRADOR_ID, FECHA, FORMA_COBRO_ID, LAT, LNG, NOTA, TIPO_VISITA, ZONA_CLIENTE_ID, IMPTE_DOCTO_CC_ID, GUARDADO_EN_MICROSIP)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -59,7 +64,11 @@ const sendVisita = async (
       visita.IMPTE_DOCTO_CC_ID,
       0,
     ];
+    console.log(`[sendVisita] Iniciando inserción en DB local...`);
     await db.executeSql(sql, values);
+    console.log(
+      `[sendVisita] Inserción completada en ${Date.now() - startInsert} ms`,
+    );
 
     const volverVisitar = [
       NO_SE_ENCONTRABA,
@@ -72,9 +81,7 @@ const sendVisita = async (
     ];
 
     const noPagado = [NO_VA_A_DAR_PAGO, TIENE_PERO_NO_PAGA, FUE_GROSERO];
-
     const isVolverVisitarEnFecha = [PIDE_REAGENDAR].includes(tipoVisita);
-
     let typeVisita = '';
 
     if (volverVisitar.includes(tipoVisita)) {
@@ -83,6 +90,8 @@ const sendVisita = async (
       typeVisita = 'NO PAGADO';
     }
 
+    // Después de la inserción en DB local...
+    const startUpdate = Date.now();
     if (isVolverVisitarEnFecha) {
       const sqlUpdate = `
         UPDATE ventas
@@ -91,11 +100,18 @@ const sendVisita = async (
           DIA_TEMPORAL_COBRANZA = ?
         WHERE DOCTO_CC_ID = ?
       `;
+      console.log(`[sendVisita] Iniciando UPDATE (volverVisitar)...`);
+      const startUpdateQuery = Date.now();
       await db.executeSql(sqlUpdate, [
         typeVisita,
         diaVolverVisitar,
         DOCTO_CC_ACR_ID,
       ]);
+      console.log(
+        `[sendVisita] UPDATE (volverVisitar) ejecutado en ${
+          Date.now() - startUpdateQuery
+        } ms`,
+      );
     } else {
       const sqlUpdate = `
         UPDATE ventas
@@ -103,25 +119,68 @@ const sendVisita = async (
           ESTADO_COBRANZA = ?
         WHERE DOCTO_CC_ID = ?
       `;
+      console.log(`[sendVisita] Iniciando UPDATE (no volverVisitar)...`);
+      const startUpdateQuery = Date.now();
       await db.executeSql(sqlUpdate, [typeVisita, DOCTO_CC_ACR_ID]);
+      console.log(
+        `[sendVisita] UPDATE (no volverVisitar) ejecutado en ${
+          Date.now() - startUpdateQuery
+        } ms`,
+      );
     }
+    console.log(
+      `[sendVisita] Total UPDATE en ventas completado en ${
+        Date.now() - startUpdate
+      } ms`,
+    );
   }
 
   const api = await initializeApi();
   if (sendToServer) {
+    const startApi = Date.now();
+    console.log(
+      `[sendVisita] Iniciando api.post para /visitas con timeout de 3000 ms...`,
+    );
     await api.post('/visitas', visita, {
       timeout: 3000,
     });
+    console.log(
+      `[sendVisita] api.post completado en ${Date.now() - startApi} ms`,
+    );
 
+    const startDelete = Date.now();
     const sqlDelete = `
-    UPDATE visitas
-    SET
-    GUARDADO_EN_MICROSIP = 1
-    WHERE ID = ?
-  `;
-
+      UPDATE visitas
+      SET
+      GUARDADO_EN_MICROSIP = 1
+      WHERE ID = ?
+    `;
+    console.log(
+      `[sendVisita] Iniciando actualización local (borrado / marcado)...`,
+    );
     await db.executeSql(sqlDelete, [visita.ID]);
+    console.log(
+      `[sendVisita] Actualización local completada en ${
+        Date.now() - startDelete
+      } ms`,
+    );
   }
+
+  const visitasRes = await db.executeSql(
+    `SELECT COUNT(*) as count FROM visitas`,
+  );
+  const visitasCount = visitasRes[0].rows.item(0).count;
+  console.log(`[sendVisita] Registros en visitas: ${visitasCount}`);
+
+  const ventasRes = await db.executeSql(`SELECT COUNT(*) as count FROM ventas`);
+  const ventasCount = ventasRes[0].rows.item(0).count;
+  console.log(`[sendVisita] Registros en ventas: ${ventasCount}`);
+
+  console.log(
+    `[sendVisita] Función sendVisita completada en ${
+      Date.now() - startFunction
+    } ms`,
+  );
   return 'Proceso terminado correctamente';
 };
 

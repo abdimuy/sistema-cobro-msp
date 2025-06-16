@@ -301,6 +301,22 @@ const saleDetailsStyles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
   },
+  ghostButton: {
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 10,
+    width: '90%',
+    backgroundColor: PRIMARY_COLOR,
+    borderRadius: 10,
+    marginHorizontal: 20,
+    gap: 15,
+  },
+  ghostButtonText: {
+    color: 'white',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
   addPayModalContainer: {
     display: 'flex',
     justifyContent: 'center',

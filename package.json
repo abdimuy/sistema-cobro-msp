@@ -1,6 +1,6 @@
 {
   "name": "sistemaCobroAppMsp",
-  "version": "1.0.8",
+  "version": "1.0.10",
   "private": true,
   "scripts": {
     "android": "react-native run-android",
@@ -38,12 +38,14 @@
     "react-dom": "18.2.0",
     "react-native": "0.74.3",
     "react-native-ble-plx": "^3.2.1",
+    "react-native-blob-util": "^0.21.3",
     "react-native-circular-progress": "^1.3.9",
     "react-native-device-info": "^14.0.2",
     "react-native-document-picker": "^9.3.1",
     "react-native-fs": "^2.20.0",
     "react-native-geolocation-service": "^5.3.1",
     "react-native-gesture-handler": "^2.15.0",
+    "react-native-image-picker": "^8.2.1",
     "react-native-keychain": "^9.1.0",
     "react-native-linear-gradient": "^2.8.3",
     "react-native-maps": "^1.10.2",

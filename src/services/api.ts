@@ -2,7 +2,7 @@ import axios from 'axios';
 import {getApiConfig} from './getAPIConfig';
 
 // URL por defecto si no se puede obtener de Firestore
-const DEFAULT_BASE_URL = 'http://localhost';
+const DEFAULT_BASE_URL = 'http://localhost/';
 
 let apiInstance = null;
 
@@ -13,7 +13,7 @@ async function initializeApi() {
     baseURL,
   });
 
-  console.log(`🔗 API BASE URL: ${baseURL}`); // Para depuración
+  console.log(`🔗 API BASE URL: ${baseURL}`);
 
   return apiInstance;
 }

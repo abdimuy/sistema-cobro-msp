@@ -59,12 +59,19 @@ const WeeklyReport = () => {
       AND FORMA_COBRO_ID IN (157, 158, 52569)
       ORDER BY FECHA_HORA_PAGO DESC;
     `;
-      console.log(userData.FECHA_CARGA_INICIAL.toDate().toISOString());
       const [results] = await dbSqlite.executeSql(query, [
         userData.FECHA_CARGA_INICIAL.toDate().toISOString(),
       ]);
 
-      const pagos: PagoServer[] = results.rows.raw() as PagoServer[];
+      //Elimina los pagos duplicados
+      const uniquePagos: Record<string, PagoServer> = {};
+      results.rows.raw().forEach((pago: PagoServer) => {
+        const key = `${pago.DOCTO_CC_ID}`;
+        if (!uniquePagos[key]) {
+          uniquePagos[key] = pago;
+        }
+      });
+      const pagos: PagoServer[] = Object.values(uniquePagos);
       setPagos(pagos);
     } catch (error) {
       console.error('Error getting local payments', error);
@@ -134,61 +141,80 @@ Total de pagos: ${
   const viewShotRef = useRef<ViewShot>(null);
   const viewShotRefVisitas = useRef<ViewShot>(null);
 
+  const MAX_SVG_HEIGHT = 3000;
   const heightTopMargin = 250;
   const heightLine = 30;
+  const maxRows = Math.floor((MAX_SVG_HEIGHT - heightTopMargin) / heightLine);
 
-  const height = heightTopMargin + pagos.length * heightLine;
+  // Divide los pagos en páginas
+  const pagosPages: PagoServer[][] = [];
+  for (let i = 0; i < pagos.length; i += maxRows) {
+    pagosPages.push(pagos.slice(i, i + maxRows));
+  }
 
-  const svgComponent = (
-    <Svg height={height} width="800">
-      <Rect x="0" y="0" width="800" height={height} fill="white" />
-      <SVGText x="10" y="20" fontSize="20" fill="black" fontWeight={600}>
-        Reporte semanal de pagos
-      </SVGText>
-      <SVGText x="10" y="50" fontSize="20" fill="black" fontWeight={600}>
-        Fecha: {dayjs().format('DD/MM/YYYY')}
-      </SVGText>
-      <SVGText x="10" y="80" fontSize="20" fill="black" fontWeight={600}>
-        Cobrador: {userData.NOMBRE}
-      </SVGText>
-      <SVGText x="10" y="140" fontSize="20" fill="black" fontWeight={600}>
-        Total de cuentas: {pagos.length}
-      </SVGText>
-      <SVGText x="10" y="170" fontSize="20" fill="black" fontWeight={600}>
-        Total cobrado: ${total}
-      </SVGText>
-      {pagos.map((pago, index) => {
-        const position = heightTopMargin + heightLine * index;
-        return (
-          <>
-            {index % 2 === 0 && (
-              <Rect
-                x="0"
-                y={position - 22}
-                width="800"
-                height={heightLine}
-                fill="#d3d3d3"
-              />
-            )}
-            <SVGText x="10" y={position} fontSize="20" fill="black">
-              {`${dayjs(pago.FECHA_HORA_PAGO).format(
-                'DD/MM/YYYY HH:mm',
-              )}  -  $${pago.IMPORTE}  -  ${pago.NOMBRE_CLIENTE}`}
-            </SVGText>
-          </>
-        );
-      })}
-      <SVGText
-        x="10"
-        y="80"
-        fontSize="20"
-        fill="black"
-        fontWeight={600}></SVGText>
-    </Svg>
-  );
+  // Crea un ref para cada página
+  const viewShotRefs = useRef<ViewShot[]>([]);
+
+  // Genera un SVG para cada página
+  const svgComponents = pagosPages.map((rowsToRender, pageIndex) => {
+    const height = heightTopMargin + rowsToRender.length * heightLine;
+    return (
+      <ViewShot
+        key={pageIndex}
+        ref={ref => {
+          if (ref) viewShotRefs.current[pageIndex] = ref;
+        }}
+        options={{format: 'png', quality: 1}}
+        style={{position: 'absolute', top: -9999, left: -9999}}>
+        <Svg height={height} width="800">
+          <Rect x="0" y="0" width="800" height={height} fill="white" />
+          <SVGText x="10" y="20" fontSize="20" fill="black" fontWeight={600}>
+            Reporte semanal de pagos (página {pageIndex + 1})
+          </SVGText>
+          <SVGText x="10" y="50" fontSize="20" fill="black" fontWeight={600}>
+            Fecha: {dayjs().format('DD/MM/YYYY')}
+          </SVGText>
+          <SVGText x="10" y="80" fontSize="20" fill="black" fontWeight={600}>
+            Cobrador: {userData.NOMBRE}
+          </SVGText>
+          <SVGText x="10" y="140" fontSize="20" fill="black" fontWeight={600}>
+            Total de cuentas: {pagos.length}
+          </SVGText>
+          <SVGText x="10" y="170" fontSize="20" fill="black" fontWeight={600}>
+            Total cobrado: ${total}
+          </SVGText>
+          {rowsToRender.map((pago, index) => {
+            const position = heightTopMargin + heightLine * index;
+            return (
+              <React.Fragment key={pago.DOCTO_CC_ID}>
+                {index % 2 === 0 && (
+                  <Rect
+                    x="0"
+                    y={position - 22}
+                    width="800"
+                    height={heightLine}
+                    fill="#d3d3d3"
+                  />
+                )}
+                <SVGText x="10" y={position} fontSize="20" fill="black">
+                  {`${dayjs(pago.FECHA_HORA_PAGO).format(
+                    'DD/MM/YYYY HH:mm',
+                  )}  -  $${pago.IMPORTE}  -  ${pago.NOMBRE_CLIENTE}`}
+                </SVGText>
+              </React.Fragment>
+            );
+          })}
+        </Svg>
+      </ViewShot>
+    );
+  });
+
+  // Calcula la altura necesaria para el SVG de visitas
+  const heightVisitas = heightTopMargin + visitas.length * heightLine;
+
   const svgComponentVisitas = (
-    <Svg height={height} width="800">
-      <Rect x="0" y="0" width="800" height={height} fill="white" />
+    <Svg height={heightVisitas} width="800">
+      <Rect x="0" y="0" width="800" height={heightVisitas} fill="white" />
       <SVGText x="10" y="20" fontSize="20" fill="black" fontWeight={600}>
         Reporte semanal de visitas
       </SVGText>
@@ -204,7 +230,7 @@ Total de pagos: ${
       {visitas.map((visita, index) => {
         const position = heightTopMargin + heightLine * index;
         return (
-          <>
+          <React.Fragment key={visita.ID}>
             {index % 2 === 0 && (
               <Rect
                 x="0"
@@ -219,7 +245,7 @@ Total de pagos: ${
                 visita?.NOMBRE_CLIENTE
               }`}
             </SVGText>
-          </>
+          </React.Fragment>
         );
       })}
       <SVGText
@@ -233,31 +259,26 @@ Total de pagos: ${
 
   const handleShareImage = async () => {
     try {
-      // Capturar la imagen
-      if (
-        !viewShotRef.current?.capture ||
-        !viewShotRefVisitas.current?.capture
-      ) {
-        throw new Error('ViewShot ref is not initialized');
+      const imageUris: string[] = [];
+      for (let i = 0; i < viewShotRefs.current.length; i++) {
+        const ref = viewShotRefs.current[i];
+        if (ref && typeof ref.capture === 'function') {
+          const uri = await ref.capture();
+          imageUris.push(`file://${uri}`);
+        }
       }
-
-      const imageUri = await viewShotRef.current.capture();
-      console.log('Imagen capturada:', imageUri);
-      const imageUriVisitas = await viewShotRefVisitas.current.capture();
-
-      // Compartir la imagen
+      console.log('Image URIs:', imageUris);
+      // Compartir todas las imágenes
       await Share.open({
         title: 'Compartir Imagen',
         message: 'Reporte semanal - ' + dayjs().format('DD/MM/YYYY'),
-        urls: [`file://${imageUri}`, `file://${imageUriVisitas}`],
-        type: 'application/octet-stream',
+        urls: imageUris,
+        type: 'image/png',
       });
-
       Alert.alert('Éxito', 'Imagen compartida exitosamente.');
     } catch (error) {
       console.error('Error al generar o compartir la imagen:', error);
       Alert.alert('Error', 'No se pudo generar o compartir la imagen.');
-    } finally {
     }
   };
 
@@ -325,13 +346,7 @@ Total de pagos: ${
         }}>
         <Text style={styles.buttonText}>Reporte en imagen</Text>
       </Pressable>
-      <ViewShot
-        ref={viewShotRef}
-        options={{format: 'png', quality: 1}}
-        style={{position: 'absolute', top: -9999, left: -9999}} // Oculta el ViewShot
-      >
-        {svgComponent}
-      </ViewShot>
+      {svgComponents}
       <ViewShot
         ref={viewShotRefVisitas}
         options={{format: 'png', quality: 1}}

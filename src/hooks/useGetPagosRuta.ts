@@ -28,6 +28,7 @@ const useGetPagosRuta = (zonaClienteId: number) => {
       pagos.push(pago);
     }
     setPagos(pagos);
+    setLoading(false);
   };
 
   useEffect(() => {
@@ -61,6 +62,7 @@ const useGetPagosRuta = (zonaClienteId: number) => {
       pagosHoy.push(pago);
     }
     setPagosHoy(pagosHoy);
+    setLoadingHoy(false);
   };
 
   useEffect(() => {
