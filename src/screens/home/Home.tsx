@@ -52,7 +52,6 @@ import useGetAPIConfig from '../../hooks/useGetAPIConfig';
 import saleItemStyles from '../../components/modules/sales/SaleItem/saleItem.styles';
 import {
   EventoGarantia,
-  GarantiaRecord,
   GarantiaServerResponse,
   getEventosGarantiasPendientes,
   getPendingGarantias,

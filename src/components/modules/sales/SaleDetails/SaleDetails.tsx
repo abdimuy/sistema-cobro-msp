@@ -57,11 +57,7 @@ import getAccuratePosition, {
 import {DateTimePickerAndroid} from '@react-native-community/datetimepicker';
 import {Button} from '@gluestack-ui/themed';
 import {useGetGarantiaBySale} from '../../../../hooks/useGetGarantiaBySale';
-import {
-  entregarProductoAlCliente,
-  getAllEventos,
-  getAllGarantias,
-} from '../../../../services/garantiaService';
+import {entregarProductoAlCliente} from '../../../../services/garantiaService';
 
 dayjs.extend(relativeTime);
 dayjs.locale('es');
@@ -226,9 +222,11 @@ const SaleDetails = () => {
     setPayment(0);
   };
 
-  useFocusEffect(() => {
-    fetchGarantia();
-  });
+  useFocusEffect(
+    useCallback(() => {
+      fetchGarantia();
+    }, []),
+  );
 
   const handleAddPayment = useCallback(async () => {
     if (refLoadingSave.current) return;
