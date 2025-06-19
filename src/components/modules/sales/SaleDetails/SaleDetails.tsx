@@ -57,7 +57,7 @@ import getAccuratePosition, {
 import {DateTimePickerAndroid} from '@react-native-community/datetimepicker';
 import {Button} from '@gluestack-ui/themed';
 import {useGetGarantiaBySale} from '../../../../hooks/useGetGarantiaBySale';
-import {entregarProductoAlCliente} from '../../../../services/garantiaService';
+import GarantiaSection from '../GarantiaSection/GarantiaSection';
 
 dayjs.extend(relativeTime);
 dayjs.locale('es');
@@ -75,7 +75,7 @@ export interface Producto {
 }
 
 type SaleDetailScreenRouteProp = RouteProp<SalesStackParamList, 'SaleDetails'>;
-type SaleDetailsNavigationProp = StackNavigationProp<
+export type SaleDetailsNavigationProp = StackNavigationProp<
   SalesStackParamList,
   'SaleDetails'
 >;
@@ -606,27 +606,6 @@ const SaleDetails = () => {
     }
   };
 
-  const handleEntregarProducto = () => {
-    Alert.alert(
-      'Confirmación',
-      '¿Estás seguro de entregar el producto al cliente?',
-      [
-        {text: 'Cancelar', style: 'cancel'},
-        {
-          text: 'Sí',
-          onPress: async () => {
-            try {
-              await entregarProductoAlCliente(garantia?.ID || 0, '');
-            } catch (error) {
-              console.error('Error entregando producto al cliente:', error);
-            }
-          },
-        },
-      ],
-      {cancelable: true},
-    );
-  };
-
   if (loading) {
     return (
       <View style={saleDetailsStyles.loaderContainer}>
@@ -931,71 +910,8 @@ const SaleDetails = () => {
             </View>
           ))}
         </View>
-        {garantia ? (
-          <>
-            <View
-              style={{
-                borderRadius: 10,
-                padding: 15,
-                backgroundColor: '#198754',
-                marginBottom: 10,
-                marginHorizontal: 20,
-              }}>
-              <Text
-                style={{
-                  fontSize: 24,
-                  fontWeight: 'bold',
-                  marginBottom: 10,
-                  color: 'white',
-                  textAlign: 'center',
-                }}>
-                Garantía Activa
-              </Text>
-              <Text
-                style={{
-                  fontSize: 18,
-                  color: 'white',
-                  textAlign: 'center',
-                  marginBottom: 10,
-                }}>
-                Se encuentra una garantía actualmente activa.
-              </Text>
-              <Text
-                style={{
-                  fontSize: 20,
-                  color: 'white',
-                  fontWeight: 'bold',
-                  textAlign: 'center',
-                }}>
-                {garantia.ESTADO}
-              </Text>
-            </View>
 
-            {garantia.ESTADO === 'LISTO_RETIRO' && (
-              <Pressable
-                style={saleDetailsStyles.ghostButton}
-                onPress={() => {
-                  handleEntregarProducto();
-                }}>
-                <Text style={saleDetailsStyles.ghostButtonText}>
-                  Producto entregado al cliente
-                </Text>
-              </Pressable>
-            )}
-          </>
-        ) : (
-          <Pressable
-            style={saleDetailsStyles.ghostButton}
-            onPress={() => {
-              navigation.navigate('Garantias', {
-                saleId: sale.DOCTO_CC_ID,
-              });
-            }}>
-            <Text style={saleDetailsStyles.ghostButtonText}>
-              INICIAR GARANTIA
-            </Text>
-          </Pressable>
-        )}
+        <GarantiaSection garantia={garantia || undefined} sale={sale} />
         {/* <Pressable
           style={saleDetailsStyles.ghostButton}
           onPress={showAllEvents}>

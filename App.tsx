@@ -584,7 +584,7 @@ const App = () => {
       {
         table: 'garantias',
         column: 'ESTADO',
-        complement: "TEXT    NOT NULL DEFAULT 'PENDIENTE'",
+        complement: "TEXT    NOT NULL DEFAULT 'NOTIFICADO'",
       },
       {
         table: 'garantias',

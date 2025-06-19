@@ -52,13 +52,14 @@ export function saveGarantiaLocally(
         // 1) Inserta la garantía
         tx.executeSql(
           `INSERT INTO garantias
-             (EXTERNAL_ID, DOCTO_CC_ID, DESCRIPCION, OBSERVACIONES, UPLOADED)
-           VALUES (?, ?, ?, ?, 0);`,
+             (EXTERNAL_ID, DOCTO_CC_ID, DESCRIPCION, OBSERVACIONES, UPLOADED, FECHA_SOLICITUD)
+           VALUES (?, ?, ?, ?, 0, ?);`,
           [
             externalId,
             record.DOCTO_CC_ID,
             record.DESCRIPTION,
             record.OBSERVACIONES ?? '',
+            record.FECHA_SOLICITUD ?? '',
           ],
           // success callback
           () => {
@@ -183,8 +184,9 @@ export async function markAsUploadedGaranatiaEvento(id: string) {
   ]);
 }
 
-export async function entregarProductoAlCliente(
-  id: number,
+export async function actualizarEstadoGarantia(
+  id: string,
+  estado: string,
   comentario: string | null = null,
 ): Promise<void> {
   const db = await openDatabase();
@@ -193,16 +195,16 @@ export async function entregarProductoAlCliente(
       tx => {
         // 1) Actualiza el estado de la garantía
         tx.executeSql(
-          `UPDATE garantias SET ESTADO = 'ENTREGA_CLIENTE' WHERE ID = ?;`,
-          [id],
+          `UPDATE garantias SET ESTADO = ? WHERE EXTERNAL_ID = ?;`,
+          [estado, id],
           () => {
             // 2) Inserta el evento de entrega
             const fechaEvento = new Date().toISOString();
             const uuidEvento = uuid.v4() as string;
             tx.executeSql(
               `INSERT INTO garantia_eventos (GARANTIA_ID, TIPO_EVENTO, FECHA_EVENTO, COMENTARIO, ID)
-               VALUES (?, 'ENTREGA_CLIENTE', ?, ?, ?);`,
-              [id, fechaEvento, comentario, uuidEvento],
+              VALUES (?, ?, ?, ?, ?);`,
+              [id, estado, fechaEvento, comentario, uuidEvento],
               () => {},
               (_tx, err) => {
                 console.error('[SQLite][garantia_eventos]', err.message);
@@ -260,8 +262,15 @@ export async function getAllImages() {
 
 export async function deleteGarantiasAndImages() {
   const db = await openDatabase();
-  await db.transaction(async tx => {
-    await tx.executeSql(`DELETE FROM garantias;`);
-    await tx.executeSql(`DELETE FROM garantia_imagenes;`);
-  });
+  await db.executeSql(`DELETE FROM garantias;`);
+  await db.executeSql(`DELETE FROM garantia_imagenes;`);
+  await db.executeSql(`DELETE FROM garantia_eventos;`);
+}
+
+export async function getNextGarantiaId(): Promise<number> {
+  const db = await openDatabase();
+  const [res] = await db.executeSql(
+    `SELECT COALESCE(MAX(ID), 0) + 1 AS nextId FROM garantias;`,
+  );
+  return res.rows.item(0).nextId;
 }
