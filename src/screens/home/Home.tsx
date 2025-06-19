@@ -1259,7 +1259,7 @@ const Home = () => {
 
       <View style={{marginVertical: 10, gap: 4}}>
         <Text style={{color: 'gray', textAlign: 'center', fontSize: 20}}>
-          Version: 1.0.10
+          Version: 1.0.11
         </Text>
         <Text style={{color: 'gray', textAlign: 'center', fontSize: 18}}>
           API URL: {baseURL}
