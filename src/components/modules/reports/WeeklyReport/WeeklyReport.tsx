@@ -95,6 +95,19 @@ const WeeklyReport = () => {
 
   const numeroPagos = pagos.length;
 
+  const totalPagosEfectivo = pagos
+    .filter(pago => pago.FORMA_COBRO_ID === PAGO_EN_EFECTIVO_ID)
+    .reduce((acc, pago) => acc + pago.IMPORTE, 0);
+  const totalPagosTransferencia = pagos
+    .filter(pago => pago.FORMA_COBRO_ID === PAGO_CON_TRANSFERENCIA_ID)
+    .reduce((acc, pago) => acc + pago.IMPORTE, 0);
+  const numeroPagosEfectivo = pagos.filter(
+    pago => pago.FORMA_COBRO_ID === PAGO_EN_EFECTIVO_ID,
+  ).length;
+  const numeroPagosTransferencia = pagos.filter(
+    pago => pago.FORMA_COBRO_ID === PAGO_CON_TRANSFERENCIA_ID,
+  ).length;
+
   const ticketText = `REPORTE SEMANAL DE COBRANZA
 
 FECHA: ${dayjs().format('DD/MM/YYYY')}
@@ -136,13 +149,16 @@ Total de pagos: ${
         pago.FORMA_COBRO_ID === PAGO_CON_TRANSFERENCIA_ID,
     ).length
   }
+
+Total en efectivo: $ ${NEGRITAS_ON}${totalPagosEfectivo}${NEGRITAS_OFF} (${numeroPagosEfectivo} pagos)
+Total con transferencia: $ ${NEGRITAS_ON}${totalPagosTransferencia}${NEGRITAS_OFF} (${numeroPagosTransferencia} pagos)
 `;
 
   const viewShotRef = useRef<ViewShot>(null);
   const viewShotRefVisitas = useRef<ViewShot>(null);
 
   const MAX_SVG_HEIGHT = 3000;
-  const heightTopMargin = 250;
+  const heightTopMargin = 310;
   const heightLine = 30;
   const maxRows = Math.floor((MAX_SVG_HEIGHT - heightTopMargin) / heightLine);
 
@@ -182,6 +198,14 @@ Total de pagos: ${
           </SVGText>
           <SVGText x="10" y="170" fontSize="20" fill="black" fontWeight={600}>
             Total cobrado: ${total}
+          </SVGText>
+          <SVGText x="10" y="200" fontSize="20" fill="black" fontWeight={600}>
+            Total en efectivo: ${totalPagosEfectivo} ({numeroPagosEfectivo}{' '}
+            pagos)
+          </SVGText>
+          <SVGText x="10" y="230" fontSize="20" fill="black" fontWeight={600}>
+            Total con transferencia: ${totalPagosTransferencia} (
+            {numeroPagosTransferencia} pagos)
           </SVGText>
           {rowsToRender.map((pago, index) => {
             const position = heightTopMargin + heightLine * index;

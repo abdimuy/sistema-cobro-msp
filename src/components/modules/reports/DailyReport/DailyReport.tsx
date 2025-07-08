@@ -31,6 +31,19 @@ const DailyReport = () => {
   const [showDatePicker, setShowDatePicker] = useState<boolean>(false);
   const [orderBy, setOrderBy] = useState<'NOMBRE' | 'FECHA'>('NOMBRE');
 
+  const totalCobradoConEfectivo = pagos
+    .filter(pago => pago.FORMA_COBRO_ID === PAGO_EN_EFECTIVO_ID)
+    .reduce((acc, pago) => acc + pago.IMPORTE, 0);
+  const totalCobradoConTransferencia = pagos
+    .filter(pago => pago.FORMA_COBRO_ID === PAGO_CON_TRANSFERENCIA_ID)
+    .reduce((acc, pago) => acc + pago.IMPORTE, 0);
+  const totalPagosEfectivo = pagos.filter(
+    pago => pago.FORMA_COBRO_ID === PAGO_EN_EFECTIVO_ID,
+  ).length;
+  const totalPagosTransferencia = pagos.filter(
+    pago => pago.FORMA_COBRO_ID === PAGO_CON_TRANSFERENCIA_ID,
+  ).length;
+
   const {
     connectPrinter,
     devices,
@@ -126,6 +139,9 @@ Total de pagos: ${
         pago.FORMA_COBRO_ID === PAGO_CON_TRANSFERENCIA_ID,
     ).length
   }
+
+Total en efectivo: $ ${NEGRITAS_ON}${totalCobradoConEfectivo}${NEGRITAS_OFF} (${totalPagosEfectivo} pagos)
+Total en transferencia: $ ${NEGRITAS_ON}${totalCobradoConTransferencia}${NEGRITAS_OFF} (${totalPagosTransferencia} pagos)
   `;
 
   const changeOrderBy = () => {
@@ -139,7 +155,7 @@ Total de pagos: ${
   const viewShotRef = useRef<ViewShot>(null);
   const viewShotRefVisitas = useRef<ViewShot>(null);
 
-  const heightTopMargin = 250;
+  const heightTopMargin = 310;
   const heightLine = 30;
 
   const height = heightTopMargin + pagos.length * heightLine;
@@ -162,6 +178,14 @@ Total de pagos: ${
       </SVGText>
       <SVGText x="10" y="170" fontSize="20" fill="black" fontWeight={600}>
         Total cobrado: ${total}
+      </SVGText>
+      <SVGText x="10" y="200" fontSize="20" fill="black" fontWeight={600}>
+        Total en efectivo: ${totalCobradoConEfectivo} ({totalPagosEfectivo}{' '}
+        pagos)
+      </SVGText>
+      <SVGText x="10" y="230" fontSize="20" fill="black" fontWeight={600}>
+        Total en transferencia: ${totalCobradoConTransferencia} (
+        {totalPagosTransferencia} pagos)
       </SVGText>
       {pagos
         .sort((a, b) => {
